@@ -1,0 +1,31 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@headlessui/react": "^1.7.18",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-slider": "^1.1.2",
+    "@supabase/supabase-js": "^2.39.3",
+    "chart.js": "^4.4.1",
+    "clsx": "^2.1.0",
+    "framer-motion": "^10.18.0",
+    "html2canvas": "^1.4.1",
+    "i18next": "^23.7.16",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.323.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-i18next": "^14.0.0",
+    "react-router-dom": "^6.21.3",
+    "tailwind-merge": "^2.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.0.12"
+  },
+  "scripts": {
+    "dev": "vite"
+  }
+}

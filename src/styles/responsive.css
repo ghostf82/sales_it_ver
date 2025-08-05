@@ -1,0 +1,139 @@
+/* Responsive utilities */
+.responsive-container {
+  width: 100%;
+  padding-right: 1rem;
+  padding-left: 1rem;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+@media (min-width: 640px) {
+  .responsive-container {
+    max-width: 640px;
+    padding-right: 1.5rem;
+    padding-left: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .responsive-container {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-container {
+    max-width: 1024px;
+    padding-right: 2rem;
+    padding-left: 2rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .responsive-container {
+    max-width: 1280px;
+  }
+}
+
+/* Responsive text utilities */
+.text-responsive {
+  font-size: clamp(0.875rem, 2vw, 1rem);
+}
+
+.heading-responsive {
+  font-size: clamp(1.25rem, 4vw, 1.875rem);
+}
+
+.number-responsive {
+  font-size: clamp(1.125rem, 3vw, 1.5rem);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Responsive card grid */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+/* Responsive table */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive table {
+  min-width: 100%;
+}
+
+/* Responsive chart container */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 75%; /* 4:3 aspect ratio */
+}
+
+.chart-container > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Responsive padding and margin utilities */
+.p-responsive {
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+.m-responsive {
+  margin: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+.gap-responsive {
+  gap: clamp(0.5rem, 2vw, 1rem);
+}
+
+/* Responsive flex utilities */
+.flex-responsive {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .flex-responsive {
+    flex-direction: row;
+  }
+}
+
+/* Responsive font sizes for data values */
+.value-xs {
+  font-size: clamp(0.75rem, 1.5vw, 0.875rem);
+}
+
+.value-sm {
+  font-size: clamp(0.875rem, 2vw, 1rem);
+}
+
+.value-md {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+}
+
+.value-lg {
+  font-size: clamp(1.25rem, 3vw, 1.5rem);
+}
+
+.value-xl {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.value-2xl {
+  font-size: clamp(1.875rem, 5vw, 2.25rem);
+}
+
+.value-3xl {
+  font-size: clamp(2.25rem, 6vw, 3rem);
+}

@@ -1,0 +1,108 @@
+/*
+  # Fix commission rules RLS policies
+  
+  1. Changes
+    - Drop existing policies
+    - Create new policies with proper admin checks
+    - Add trigger to handle updated_by field
+    - Add proper error handling
+    
+  2. Security
+    - Enable RLS
+    - Allow read access for all authenticated users
+    - Restrict write operations to admin users only
+*/
+
+-- Drop existing policies
+DROP POLICY IF EXISTS read_commission_rules ON commission_rules;
+DROP POLICY IF EXISTS insert_commission_rules ON commission_rules;
+DROP POLICY IF EXISTS update_commission_rules ON commission_rules;
+DROP POLICY IF EXISTS delete_commission_rules ON commission_rules;
+
+-- Create new policies
+CREATE POLICY read_commission_rules
+  ON commission_rules
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY insert_commission_rules
+  ON commission_rules
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM admin_users
+      WHERE id = auth.uid() 
+      AND is_admin = true
+      AND id IS NOT NULL
+    )
+  );
+
+CREATE POLICY update_commission_rules
+  ON commission_rules
+  FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM admin_users
+      WHERE id = auth.uid() 
+      AND is_admin = true
+      AND id IS NOT NULL
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM admin_users
+      WHERE id = auth.uid() 
+      AND is_admin = true
+      AND id IS NOT NULL
+    )
+  );
+
+CREATE POLICY delete_commission_rules
+  ON commission_rules
+  FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM admin_users
+      WHERE id = auth.uid() 
+      AND is_admin = true
+      AND id IS NOT NULL
+    )
+  );
+
+-- Drop existing trigger and function
+DROP TRIGGER IF EXISTS set_updated_by ON commission_rules;
+DROP FUNCTION IF EXISTS handle_updated_by;
+
+-- Create trigger function
+CREATE OR REPLACE FUNCTION handle_updated_by()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Set updated_by to current user
+  NEW.updated_by := auth.uid();
+  
+  -- Set updated_at to current timestamp
+  NEW.updated_at := now();
+  
+  -- Verify admin status
+  IF NOT EXISTS (
+    SELECT 1 FROM admin_users
+    WHERE id = auth.uid()
+    AND is_admin = true
+    AND id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'Only administrators can modify commission rules';
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for both INSERT and UPDATE
+CREATE TRIGGER set_updated_by
+  BEFORE INSERT OR UPDATE ON commission_rules
+  FOR EACH ROW
+  EXECUTE FUNCTION handle_updated_by();
