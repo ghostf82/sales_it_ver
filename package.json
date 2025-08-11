@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "bootstrap": "node scripts/install.mjs",
     "dev": "node dev.mjs",
     "start": "node dev.mjs"
   },
