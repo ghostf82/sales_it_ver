@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "npm --prefix ./api run dev",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "start": "npm --prefix ./api run start"
+    "dev": "cd api && npm run dev",
+    "start": "cd api && npm run start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
