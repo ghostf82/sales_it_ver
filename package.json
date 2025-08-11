@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd api && npm run dev",
+    "dev": "npm --prefix ./api run dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "cd api && npm run start"
+    "start": "npm --prefix ./api run start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
