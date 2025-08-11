@@ -1,0 +1,290 @@
+{
+  "info": {
+    "name": "Commission Program API",
+    "description": "REST API for Commission Program - Odoo ERP Integration",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001/api",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/../health",
+          "host": ["{{base_url}}"],
+          "path": ["..", "health"]
+        }
+      }
+    },
+    {
+      "name": "Representatives",
+      "item": [
+        {
+          "name": "Get All Representatives",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/representatives",
+              "host": ["{{base_url}}"],
+              "path": ["representatives"]
+            }
+          }
+        },
+        {
+          "name": "Get Representative by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/representatives/:id",
+              "host": ["{{base_url}}"],
+              "path": ["representatives", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "representative_uuid_here"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Representative",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"أحمد محمد\",\n  \"email\": \"ahmed@example.com\",\n  \"phone\": \"+966501234567\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/representatives",
+              "host": ["{{base_url}}"],
+              "path": ["representatives"]
+            }
+          }
+        },
+        {
+          "name": "Update Representative",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"أحمد محمد المحدث\",\n  \"email\": \"ahmed.updated@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/representatives/:id",
+              "host": ["{{base_url}}"],
+              "path": ["representatives", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "representative_uuid_here"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Representative",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/representatives/:id",
+              "host": ["{{base_url}}"],
+              "path": ["representatives", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "representative_uuid_here"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "Get All Sales",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sales?page=1&limit=10&year=2025",
+              "host": ["{{base_url}}"],
+              "path": ["sales"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Sale",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"representative_id\": \"uuid-here\",\n  \"company_id\": \"uuid-here\",\n  \"category\": \"اسمنتي\",\n  \"sales\": 150000,\n  \"target\": 120000,\n  \"year\": 2025,\n  \"month\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/sales",
+              "host": ["{{base_url}}"],
+              "path": ["sales"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Commission Rules",
+      "item": [
+        {
+          "name": "Get All Commission Rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/commission-rules",
+              "host": ["{{base_url}}"],
+              "path": ["commission-rules"]
+            }
+          }
+        },
+        {
+          "name": "Create Commission Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"اسمنتي\",\n  \"tier1_from\": 50,\n  \"tier1_to\": 70,\n  \"tier1_rate\": 0.0025,\n  \"tier2_from\": 71,\n  \"tier2_to\": 100,\n  \"tier2_rate\": 0.003,\n  \"tier3_from\": 101,\n  \"tier3_rate\": 0.004\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/commission-rules",
+              "host": ["{{base_url}}"],
+              "path": ["commission-rules"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Get Full Commission Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reports?year=2025&month=1",
+              "host": ["{{base_url}}"],
+              "path": ["reports"],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2025"
+                },
+                {
+                  "key": "month",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Representative Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reports/representative/:id?year=2025&month=1",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "representative", ":id"],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2025"
+                },
+                {
+                  "key": "month",
+                  "value": "1"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "representative_uuid_here"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

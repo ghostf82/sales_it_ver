@@ -123,6 +123,14 @@ const options = {
         description: 'Operations related to sales representatives'
       },
       {
+        name: 'Companies',
+        description: 'Operations related to companies'
+      },
+      {
+        name: 'Collections',
+        description: 'Operations related to collection records'
+      },
+      {
         name: 'Sales',
         description: 'Operations related to sales data'
       },

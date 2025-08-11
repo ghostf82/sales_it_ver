@@ -11,6 +11,8 @@ const authMiddleware = require('./middleware/auth');
 
 // Import routes
 const representativesRoutes = require('./routes/representatives');
+const companiesRoutes = require('./routes/companies');
+const collectionsRoutes = require('./routes/collections');
 const salesRoutes = require('./routes/sales');
 const commissionRulesRoutes = require('./routes/commissionRules');
 const reportsRoutes = require('./routes/reports');
@@ -65,6 +67,8 @@ app.get('/health', (req, res) => {
 
 // API routes with authentication middleware
 app.use('/api/representatives', authMiddleware, representativesRoutes);
+app.use('/api/companies', authMiddleware, companiesRoutes);
+app.use('/api/collections', authMiddleware, collectionsRoutes);
 app.use('/api/sales', authMiddleware, salesRoutes);
 app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
