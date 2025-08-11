@@ -59,12 +59,12 @@ export function calculateCommission(
   const total_commission = tier1_commission + tier2_commission + tier3_commission;
 
   return {
-    tier1_amount: parseFloat(tier1_amount.toFixed(2)),
-    tier1_commission: parseFloat(tier1_commission.toFixed(2)),
-    tier2_amount: parseFloat(tier2_amount.toFixed(2)),
-    tier2_commission: parseFloat(tier2_commission.toFixed(2)),
-    tier3_amount: parseFloat(tier3_amount.toFixed(2)),
-    tier3_commission: parseFloat(tier3_commission.toFixed(2)),
-    total_commission: parseFloat(total_commission.toFixed(2))
+    tier1_amount: +tier1_amount.toFixed(2),
+    tier1_commission: +tier1_commission.toFixed(2),
+    tier2_amount: +tier2_amount.toFixed(2),
+    tier2_commission: +tier2_commission.toFixed(2),
+    tier3_amount: +tier3_amount.toFixed(2),
+    tier3_commission: +tier3_commission.toFixed(2),
+    total_commission: +total_commission.toFixed(2)
   };
 }
