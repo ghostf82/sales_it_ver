@@ -7,8 +7,6 @@
     "bootstrap": "node scripts/install.mjs",
     "dev": "node dev.mjs",
     "start": "node dev.mjs"
-    "dev": "cd api && npm run dev",
-    "start": "cd api && npm run start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -39,7 +37,6 @@
     "@radix-ui/react-tabs": "^1.1.0",
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-slider": "^1.2.0"
-  },
   "devDependencies": {
     "tsx": "^4.7.2",
     "typescript": "^5.5.4",
