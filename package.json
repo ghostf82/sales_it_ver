@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node dev.mjs",
+    "api-dev": "cd api && npm run dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "start": "node dev.mjs"
