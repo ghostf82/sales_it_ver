@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node dev.mjs",
+    "dev": "cd api && npm run dev",
     "api-dev": "cd api && npm run dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node dev.mjs"
+    "start": "cd api && npm run start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
