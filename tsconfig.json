@@ -6,13 +6,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
     "skipLibCheck": true,
-    "strict": false,
-    "declaration": false,
-    "sourceMap": true
+    "resolveJsonModule": true,
+    "strict": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src"]
 }

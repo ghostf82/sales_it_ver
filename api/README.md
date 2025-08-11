@@ -1,0 +1,1 @@
+This is a shim so Bolt can run the dev server inside /api. It proxies to ../src/index.ts. Do not add code here.
