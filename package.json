@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd api && npm install && npm run dev",
-    "start": "cd api && npm run start"
+    "bootstrap": "node scripts/install.mjs",
+    "dev": "node dev.mjs",
+    "start": "node dev.mjs"
     "dev": "cd api && npm run dev",
     "start": "cd api && npm run start"
   },
