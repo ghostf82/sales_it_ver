@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm --prefix ./api run dev",
-    "build": "tsc && vite build",
+    "dev": "cd api && npm install && npm run dev",
+    "start": "cd api && npm run start"
     "dev": "cd api && npm run dev",
     "start": "cd api && npm run start"
   },
