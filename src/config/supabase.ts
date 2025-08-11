@@ -30,4 +30,4 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 console.log("✅ Supabase client initialized");
 console.log(`📍 URL: ${supabaseUrl}`);
-console.log(`🔑 Key: ${supabaseKey.slice(0, 10)}...`);
+console.log(`🔑 Key: ${supabaseKey.slice(0, 5)}...`);

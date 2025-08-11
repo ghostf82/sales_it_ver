@@ -12,29 +12,22 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       });
     }
 
-    const token = authHeader.split(" ")[1];
-    
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "missing_token"
-      });
-    }
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-    // Verify JWT token with Supabase
-    const { data, error } = await supabase.auth.getUser(token);
-    
-    if (error || !data?.user) {
+    // Verify the JWT token with Supabase
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
       return res.status(401).json({
         success: false,
         error: "invalid_or_expired_token"
       });
     }
 
-    // Attach user to request
-    (req as any).user = data.user;
+    // Attach user info to request object
+    (req as any).user = user;
     (req as any).token = token;
-    
+
     next();
   } catch (error) {
     console.error("Authentication error:", error);

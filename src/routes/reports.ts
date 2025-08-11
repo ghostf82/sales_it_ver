@@ -7,11 +7,43 @@ import { calculateCommission, type CommissionRule } from "../services/commission
 export const router = Router();
 router.use(authMiddleware);
 
+/**
+ * Calculate commission based on sales, target, and commission rules
+ */
+const calculateCommissionForSale = (sales: number, target: number, rule: CommissionRule) => {
+  if (!rule || target === 0) return { tier1: 0, tier2: 0, tier3: 0, total: 0 };
+
+  const achievementPercent = (sales / target) * 100;
+  let tier1 = 0, tier2 = 0, tier3 = 0;
+
+  // Tier 1: Always 70% of target
+  tier1 = target * 0.7 * rule.tier1_rate;
+
+  // Tier 2: 30% of target if achievement >= 71%
+  if (achievementPercent >= 71) {
+    tier2 = target * 0.3 * rule.tier2_rate;
+  }
+
+  // Tier 3: Amount exceeding target if achievement > 100%
+  if (achievementPercent > 100) {
+    tier3 = (sales - target) * rule.tier3_rate;
+  }
+
+  const total = tier1 + tier2 + tier3;
+
+  return {
+    tier1: parseFloat(tier1.toFixed(2)),
+    tier2: parseFloat(tier2.toFixed(2)),
+    tier3: parseFloat(tier3.toFixed(2)),
+    total: parseFloat(total.toFixed(2))
+  };
+};
+
 // GET /api/reports?year=2025&month=1
 router.get("/", async (req, res, next) => {
   try {
     const { year, month } = req.query as any;
-    
+
     // Build query for representative data
     let salesQuery = supabase
       .from("representative_data")
@@ -73,10 +105,10 @@ router.get("/", async (req, res, next) => {
 
       // Find commission rule for this category
       const rule = (commissionRules || []).find((r: any) => r.category === sale.category);
-      let commission = { total_commission: 0 };
+      let commission = { total: 0 };
       
       if (rule) {
-        commission = calculateCommission(sale.sales, sale.target, rule as CommissionRule);
+        commission = calculateCommissionForSale(sale.sales, sale.target, rule as CommissionRule);
       }
 
       const saleDetail = {
@@ -95,7 +127,7 @@ router.get("/", async (req, res, next) => {
       representativeGroups[repId].sales_details.push(saleDetail);
       representativeGroups[repId].totals.sales += saleDetail.sales;
       representativeGroups[repId].totals.target += saleDetail.target;
-      representativeGroups[repId].totals.commission += commission.total_commission;
+      representativeGroups[repId].totals.commission += commission.total;
     });
 
     // Add collection data
@@ -204,10 +236,10 @@ router.get("/representative/:id", async (req, res, next) => {
     // Process sales data and calculate commissions
     const processedSales = (salesData || []).map(sale => {
       const rule = (commissionRules || []).find((r: any) => r.category === sale.category);
-      let commission = { total_commission: 0 };
+      let commission = { total: 0 };
       
       if (rule) {
-        commission = calculateCommission(sale.sales, sale.target, rule as CommissionRule);
+        commission = calculateCommissionForSale(sale.sales, sale.target, rule as CommissionRule);
       }
 
       return {
@@ -229,7 +261,7 @@ router.get("/representative/:id", async (req, res, next) => {
     const totals = processedSales.reduce((acc, sale) => {
       acc.total_sales += sale.sales;
       acc.total_target += sale.target;
-      acc.total_commission += sale.commission.total_commission;
+      acc.total_commission += sale.commission.total;
       return acc;
     }, { total_sales: 0, total_target: 0, total_commission: 0 });
 

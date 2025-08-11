@@ -17,7 +17,6 @@ Edit `.env`:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_supabase_anon_key
 PORT=3001
-NODE_ENV=development
 ```
 
 ### 2. Install Dependencies
