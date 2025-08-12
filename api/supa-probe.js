@@ -1,66 +1,87 @@
-// api/supa-probe.js (sandbox-safe)
+
 const dns = require('dns');
-const tls = require('tls');
 const https = require('https');
 const { URL } = require('url');
 const path = require('path');
-
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const raw =
-  process.env.SUPABASE_URL ||
-  (process.env.SUPABASE_PROJECT_REF
-    ? `https://${process.env.SUPABASE_PROJECT_REF}.supabase.co`
-    : null);
+if (!process.env.SUPABASE_URL&& process.env.SUPABASE_PROJECT_REF) {
+  process.env.SUPABASE_URL = `https://${process.env.SUPABASE_PROJECT_REF}.supabase.co`;
+}
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+  require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+}
+const urlStr = process.env.SUPABASE_URL || (process.env.SUPABASE_PROJECT_REF ? `https://${process.env.SUPABASE_PROJECT_REF}.supabase.co` : null);
 const key = process.env.SUPABASE_KEY;
+if (!urlStr) { console.error('✢ Missing SUPABASE_URL (or SUPABASE_PROJECT_REF)');process.exit(1); }
+if (!key) { console.error('✢ Missing SUPABASE_KEY');process.exit(1); }
 
-if (!raw) { console.error('❌ Missing SUPABASE_URL (or SUPABASE_PROJECT_REF).'); process.exit(1); }
-if (!key) { console.error('❌ Missing SUPABASE_KEY.'); process.exit(1); }
-
-const u = new URL(raw);
+const u = new URL(urlStr);
 const host = u.hostname;
-
-console.log('🔎 Host:', host);
-
-// 1) DNS
-dns.resolve4(host, (err, addrs) => {
-  console.log('🌐 DNS v4 ->', err ? String(err) : addrs);
-
-  // 2) TLS Handshake (بدون getProtocol)
-  const sock = tls.connect(
-    { host, port: 443, servername: host, rejectUnauthorized: true, timeout: 7000 },
-    () => {
-      console.log('🔐 TLS authorized:', sock.authorized, 'err:', sock.authorizationError || null);
-      try { sock.end(); } catch {}
-
-      // 3) HTTPS GET /auth/v1/health
-      const agent = new https.Agent({ keepAlive: false, maxSockets: 1 });
-      const req = https.request(
-        {
-          host,
-          port: 443,
-          method: 'GET',
-          path: '/auth/v1/health',
-          headers: { 'User-Agent': 'supa-probe/1', Accept: 'application/json' },
-          servername: host,
-          agent,
-          timeout: 7000,
-        },
-        (res) => {
-          let b = '';
-          res.on('data', (c) => (b += c));
-          res.on('end', () => {
-            console.log('✅ HTTPS /auth/v1/health status:', res.statusCode);
-            console.log('CT:', res.headers['content-type']);
-            console.log('Body:', (b || '').slice(0, 200));
-          });
-        }
-      );
-      req.on('error', (e) => console.log('❌ HTTPS error:', String(e)));
+function dnsLookupV4(h) {
+  return new Promise((resolve) => {
+    dns.lookup(h, { all: true, family: 4 }, (err, addrs) => {
+      if (err) resolve({ ok: false, error: err.message });
+      else resolve({ ok: true, addrs });
+    });
+  });
+}
+function httpGet(urlString, headers = {}, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(urlString);
+      const opts = {
+        method: 'GET',
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + (u.search || ''),
+        headers: Object.assign({ 'User-Agent': 'supa-probe/1' }, headers),
+      };
+      const req = https.request(opts, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve({
+          ok: true,
+          status: res.statusCode,
+          headers: res.headers,
+          body: data,
+        }));
+      });
+      req.on('error', (e) => resolve({ ok: false, error: e.message }));
+      req.setTimeout(timeoutMs, () => { try { req.destroy(new Error('timeout')); } catch ({}) });
       req.end();
+    } catch (e) {
+      resolve({ ok: false, error: e.message });
     }
-  );
+  });
+}
 
-  sock.on('error', (e) => console.log('❌ TLS error:', String(e)));
-  sock.on('timeout', () => { console.log('⏳ TLS timeout'); try { sock.destroy(); } catch {} });
-});
+(async () => {
+  console.log(`< ✩ Host: ${host}`);
+  const dns4 = await dnsLookupV4(host);
+  if (dns4.ok) console.log(`✁ DNS v4 => `, dns4.addrs.map(a => a.address));
+  else console.log(`✁ DNS v4 error -> ', host, dns4.error);
+
+  const root = await httpGet(`${u.origin}/ `);
+  if (root.ok) {
+    console.log('　‭• ROOT', { status: root.status, ct: root.headers['content-type'] });
+  } else {
+    console.log('　‭• ROOT error -> ', root.error);
+  }
+
+  const auth = await httpGet(`${u.origin}/auth/v1/health`);
+  if (auth.ok) {
+    console.log('★ ‭¤ AUTH', { status: auth.status, ct: auth.headers['content-type'], body: (auth.body || '').slice(0,120) });
+  } else {
+    console.log('★ ‭¤ AUTH error -> ', auth.error);
+  }
+
+  const rest = await httpGet(`${u.origin}/rest/v1/, {
+    apikey: key,
+    authorization: `Bearer ${key}` ,
+  });
+  if (rest.ok) {
+    console.log('‼ ‭¤ REST', { status: rest.status, ct: rest.headers['content-type'] });
+  } else {
+    console.log('‼ ‭¤ REST error -> ', rest.error);
+  }
+})();
