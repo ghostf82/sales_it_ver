@@ -90,6 +90,25 @@ mountRoute("/api/companies", "./routes/companies");
 mountRoute("/api/sales", "./routes/sales");
 mountRoute("/api/collections", "./routes/collections");
 
+// Root index to avoid 404 on "/"
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "commission-api",
+    time: new Date().toISOString(),
+    endpoints: [
+      "/health",
+      "/docs",
+      "/api/commission-rules",
+      "/api/representatives",
+      "/api/companies",
+      "/api/sales",
+      "/api/collections",
+      "/api/reports"
+    ]
+  });
+});
+
 // Health endpoint (works even if routes fail)
 app.get("/health", (_req,res)=> res.status(200).json({ok:true, msg:"API is running"}));
 
@@ -112,16 +131,10 @@ app.get("/diagnostics", async (_req, res) => {
   });
 });
 
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: `Route ${req.method} ${req.originalUrl} not found`
-  });
+// Friendly JSON 404 for any unknown path (keep as last middleware)
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: "Not found", path: req.originalUrl });
 });
-
-// Global error handler
-app.use(errorHandler);
 
 const rawPort = (process.env.PORT || "3001").toString().trim();
 const PORT = Number.parseInt(rawPort,10) > 0 ? Number.parseInt(rawPort,10) : 3001;
