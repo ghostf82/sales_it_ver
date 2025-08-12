@@ -1,11 +1,10 @@
-// api/supa-probe.js
+// api/supa-probe.js (sandbox-safe)
 const dns = require('dns');
 const tls = require('tls');
 const https = require('https');
 const { URL } = require('url');
 const path = require('path');
 
-// اقرأ متغيرات البيئة من ../.env (اللي كتبناها قبل كده)
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const raw =
@@ -13,46 +12,26 @@ const raw =
   (process.env.SUPABASE_PROJECT_REF
     ? `https://${process.env.SUPABASE_PROJECT_REF}.supabase.co`
     : null);
-
 const key = process.env.SUPABASE_KEY;
 
-if (!raw) {
-  console.error('❌ Missing SUPABASE_URL (or SUPABASE_PROJECT_REF).');
-  process.exit(1);
-}
-if (!key) {
-  console.error('❌ Missing SUPABASE_KEY.');
-  process.exit(1);
-}
+if (!raw) { console.error('❌ Missing SUPABASE_URL (or SUPABASE_PROJECT_REF).'); process.exit(1); }
+if (!key) { console.error('❌ Missing SUPABASE_KEY.'); process.exit(1); }
 
 const u = new URL(raw);
 const host = u.hostname;
 
 console.log('🔎 Host:', host);
 
-// 1) DNS v4
+// 1) DNS
 dns.resolve4(host, (err, addrs) => {
   console.log('🌐 DNS v4 ->', err ? String(err) : addrs);
 
-  // 2) TLS Handshake
+  // 2) TLS Handshake (بدون getProtocol)
   const sock = tls.connect(
-    {
-      host,
-      port: 443,
-      servername: host, // مهم لـ SNI
-      rejectUnauthorized: true,
-      timeout: 7000,
-    },
+    { host, port: 443, servername: host, rejectUnauthorized: true, timeout: 7000 },
     () => {
-      console.log(
-        '🔐 TLS authorized:',
-        sock.authorized,
-        'error:',
-        sock.authorizationError || null,
-        'proto:',
-        sock.getProtocol()
-      );
-      sock.end();
+      console.log('🔐 TLS authorized:', sock.authorized, 'err:', sock.authorizationError || null);
+      try { sock.end(); } catch {}
 
       // 3) HTTPS GET /auth/v1/health
       const agent = new https.Agent({ keepAlive: false, maxSockets: 1 });
@@ -62,10 +41,7 @@ dns.resolve4(host, (err, addrs) => {
           port: 443,
           method: 'GET',
           path: '/auth/v1/health',
-          headers: {
-            'User-Agent': 'supa-probe/1',
-            Accept: 'application/json',
-          },
+          headers: { 'User-Agent': 'supa-probe/1', Accept: 'application/json' },
           servername: host,
           agent,
           timeout: 7000,
@@ -86,8 +62,5 @@ dns.resolve4(host, (err, addrs) => {
   );
 
   sock.on('error', (e) => console.log('❌ TLS error:', String(e)));
-  sock.on('timeout', () => {
-    console.log('⏳ TLS timeout');
-    sock.destroy();
-  });
+  sock.on('timeout', () => { console.log('⏳ TLS timeout'); try { sock.destroy(); } catch {} });
 });
