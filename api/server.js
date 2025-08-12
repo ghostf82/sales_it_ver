@@ -93,6 +93,8 @@ app.get("/health", (_req, res) => {
 
 // 404 handler
 app.use('*', (req, res) => {
+}
+)
 const http = require("http");
 const server = http.createServer(app);
 server.on("error", (e) => console.error("[API] server error:", e));
