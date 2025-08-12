@@ -1,18 +1,16 @@
-const path = require("path");
-try {
-  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
-    require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-  }
-} catch (_) {}
-
-const path = require("path");
-try {
-  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
-    require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-  }
-} catch (_) {}
+/* ---- DOTENV SAFE PRELOAD (idempotent) ---- */
+;(function loadEnvOnce(){
+  try {
+    if (process.env.__SUPA_ENV_LOADED__ === "1") return;
+    const p = (typeof path !== "undefined") ? path : require("path");
+    try { require("dotenv").config({ path: p.resolve(__dirname, "../.env") }); } catch (_) {}
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+      try { require("dotenv").config({ path: p.resolve(__dirname, "../../.env") }); } catch (_) {}
+    }
+    process.env.__SUPA_ENV_LOADED__ = "1";
+  } catch (_) {}
+})();
+/* ---- END PRELOAD ---- */
 
 const { createClient } = require('@supabase/supabase-js');
 
