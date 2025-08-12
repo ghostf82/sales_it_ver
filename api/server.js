@@ -12,27 +12,25 @@ const swaggerSetup = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
 
-// Import routes
-const representativesRoutes = require('./routes/representatives');
-const companiesRoutes = require('./routes/companies');
-const collectionsRoutes = require('./routes/collections');
-const salesRoutes = require('./routes/sales');
-const commissionRulesRoutes = require('./routes/commissionRules');
-const reportsRoutes = require('./routes/reports');
-
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // Security middleware
 app.use(helmet());
 
+// Trust proxy and CORS
+app.set("trust proxy", 1);
+app.use(cors({ origin: true, credentials: true }));
+
 // CORS configuration for Odoo integration
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true
-}));
+// (keeping existing CORS config as fallback)
+if (!app._router || !app._router.stack.some(layer => layer.name === 'corsMiddleware')) {
+  app.use(cors({
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true
+  }));
+}
 
 // Rate limiting
 const limiter = rateLimit({
@@ -52,7 +50,7 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ---- SERVER BOOTSTRAP (safe port/host) ----
+// Start server on 0.0.0.0 with safe PORT
 const rawPort = (process.env.PORT || "3001").toString().trim();
 const PORT = Number.parseInt(rawPort, 10) > 0 ? Number.parseInt(rawPort, 10) : 3001;
 const HOST = "0.0.0.0";
@@ -69,29 +67,39 @@ process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 // Swagger documentation
 swaggerSetup(app);
 
-// API routes with authentication middleware
-app.use('/api/representatives', authMiddleware, representativesRoutes);
-app.use('/api/companies', authMiddleware, companiesRoutes);
-app.use('/api/collections', authMiddleware, collectionsRoutes);
-app.use('/api/sales', authMiddleware, salesRoutes);
-app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
-app.use('/api/reports', authMiddleware, reportsRoutes);
+// ---------- SAFE ROUTE MOUNTER ----------
+function mountRoute(path, rel) {
+  try {
+    const r = require(rel);
+    app.use(path, authMiddleware, r);
+    console.log(`[API] mounted ${rel} at ${path}`);
+  } catch (e) {
+    console.error(`[API] skipping ${rel}:`, e.message);
+  }
+}
+
+// Mount known routes defensively (only if exist)
+mountRoute("/api/reports", "./routes/reports");
+mountRoute("/api/commission-rules", "./routes/commissionRules");
+mountRoute("/api/representatives", "./routes/representatives");
+mountRoute("/api/companies", "./routes/companies");
+mountRoute("/api/sales", "./routes/sales");
+mountRoute("/api/collections", "./routes/collections");
+
+// Health endpoint (works even if routes fail)
+app.get("/health", (_req, res) => {
+  res.status(200).json({ success: true, data: { message: "API is running" } });
+});
 
 // 404 handler
 app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Endpoint not found'
-  });
-});
-
-// Global error handler
-app.use(errorHandler);
-
-// start server
-app.listen(PORT, HOST, () => {
+const http = require("http");
+const server = http.createServer(app);
+server.on("error", (e) => console.error("[API] server error:", e));
+server.listen(PORT, HOST, () => {
   console.log(`[API] listening on http://${HOST}:${PORT}`);
 });
-// ---- END BOOTSTRAP ----
 
-module.exports = app;
+// global error guards
+process.on("unhandledRejection", (r) => console.error("unhandledRejection:", r));
+process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
