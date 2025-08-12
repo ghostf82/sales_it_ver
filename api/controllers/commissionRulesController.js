@@ -235,3 +235,9 @@ module.exports = {
   updateCommissionRule,
   deleteCommissionRule
 };
+
+// Safety alias for getAllCommissionRules
+module.exports.getAllCommissionRules = module.exports.getAllCommissionRules
+  || module.exports.getCommissionRules
+  || module.exports.listCommissionRules
+  || module.exports.getAll;

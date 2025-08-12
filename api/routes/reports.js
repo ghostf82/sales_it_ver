@@ -5,6 +5,33 @@ const {
   getFullReport
 } = require('../controllers/reportsController');
 
+// --- commission rules resolver (safe import + fallback) ---
+const commissionRulesController = (() => {
+  try { return require("../controllers/commissionRulesController"); }
+  catch (_) { return {}; }
+})();
+const { supabase } = require("../config/supabase");
+
+// Use controller method if present; otherwise fallback to a direct DB read.
+const getAllCommissionRules =
+  commissionRulesController?.getAllCommissionRules ||
+  commissionRulesController?.getCommissionRules ||
+  commissionRulesController?.listCommissionRules ||
+  commissionRulesController?.getAll ||
+  (async function () {
+    try {
+      const { data, error } = await supabase
+        .from("commission_rules")
+        .select("*");
+      if (error) { console.error("commission_rules fetch error:", error); return []; }
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error("commission_rules fallback error:", e);
+      return [];
+    }
+  });
+// --- end resolver ---
+
 /**
  * @swagger
  * components:
