@@ -3,7 +3,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+  require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+}
 
 const swaggerSetup = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
