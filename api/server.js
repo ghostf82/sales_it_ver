@@ -52,21 +52,22 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// ---- SERVER BOOTSTRAP (safe port/host) ----
+const rawPort = (process.env.PORT || "3001").toString().trim();
+const PORT = Number.parseInt(rawPort, 10) > 0 ? Number.parseInt(rawPort, 10) : 3001;
+const HOST = "0.0.0.0";
+
+// health endpoint (for Bolt)
+app.get("/health", (_req, res) => {
+  res.status(200).json({ success: true, data: { message: "API is running" } });
+});
+
+// global error guards
+process.on("unhandledRejection", (r) => console.error("unhandledRejection:", r));
+process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
+
 // Swagger documentation
 swaggerSetup(app);
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      version: '1.0.0',
-      environment: process.env.NODE_ENV || 'development'
-    }
-  });
-});
 
 // API routes with authentication middleware
 app.use('/api/representatives', authMiddleware, representativesRoutes);
@@ -87,11 +88,10 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Commission API Server running on port ${PORT}`);
-  console.log(`📚 API Documentation available at http://localhost:${PORT}/docs`);
-  console.log(`🏥 Health check available at http://localhost:${PORT}/health`);
+// start server
+app.listen(PORT, HOST, () => {
+  console.log(`[API] listening on http://${HOST}:${PORT}`);
 });
+// ---- END BOOTSTRAP ----
 
 module.exports = app;
