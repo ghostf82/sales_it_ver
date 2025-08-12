@@ -2,8 +2,9 @@
 'use strict';
 
 const path = require('path');
+// .env المحلي داخل api
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-// Fallback لـ .env في جذر المشروع لو المتغيرات مش موجودة
+// fallback لـ .env في جذر المشروع لو المتغيرات مش موجودة
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
   require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 }
@@ -17,6 +18,9 @@ const rateLimit = require('express-rate-limit');
 
 const swaggerSetup = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
+
+// فلاج لتعطيل الاتصال بـ Supabase أثناء التطوير/الديبج
+const SUPA_DISABLED = String(process.env.SUPABASE_DISABLED || '').trim() === '1';
 
 const app = express();
 
@@ -83,9 +87,22 @@ mountRoute('/api/companies', './routes/companies');
 mountRoute('/api/sales', './routes/sales');
 mountRoute('/api/collections', './routes/collections');
 
-/* ------------ Diagnostics اختيارية ------------ */
+/* ------------ Diagnostics ------------ */
 const { supabase } = require('./config/supabase');
 app.get('/diagnostics', async (_req, res) => {
+  // لو متعطّل (SUPABASE_DISABLED=1) نرجّع فورًا بدون أي اتصال خارجي
+  if (SUPA_DISABLED) {
+    return res.json({
+      ok: true,
+      env: {
+        url: !!process.env.SUPABASE_URL || !!process.env.SUPABASE_PROJECT_REF,
+        key: !!process.env.SUPABASE_KEY,
+        port: PORT,
+      },
+      supabase: { ok: false, error: 'SUPABASE_DISABLED' },
+    });
+  }
+
   const out = { ok: true, env: {}, supabase: { ok: false, error: null } };
   try {
     const { error } = await supabase
