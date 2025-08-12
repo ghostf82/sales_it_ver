@@ -136,12 +136,33 @@ app.use((req, res) => {
   res.status(404).json({ ok: false, error: "Not found", path: req.originalUrl });
 });
 
+// Root endpoint with API information
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "commission-api",
+    health: "/health",
+    docs: "/docs",
+    api_examples: [
+      "/api/commission-rules",
+      "/api/representatives",
+      "/api/companies",
+      "/api/sales",
+      "/api/collections",
+      "/api/reports"
+    ],
+    time: new Date().toISOString()
+  });
+});
+
 const rawPort = (process.env.PORT || "3001").toString().trim();
-const PORT = Number.parseInt(rawPort,10) > 0 ? Number.parseInt(rawPort,10) : 3001;
+const PORT = Number.parseInt(rawPort, 10) > 0 ? Number.parseInt(rawPort, 10) : 3001;
 const HOST = "0.0.0.0";
 const http = require("http");
 http.createServer(app).listen(PORT, HOST, () => {
-  console.log(`[API] listening on http://${HOST}:${PORT}`);
+  console.log(`🚀 Commission API Server running on http://${HOST}:${PORT}`);
+  console.log(`🏥 Health: /health`);
+  console.log(`📚 Docs: /docs`);
 });
 
 module.exports = app;
