@@ -6,6 +6,14 @@ try {
   }
 } catch (_) {}
 
+const path = require("path");
+try {
+  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+    require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+  }
+} catch (_) {}
+
 const { createClient } = require('@supabase/supabase-js');
 
 const url = process.env.SUPABASE_URL;

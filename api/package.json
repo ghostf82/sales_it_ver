@@ -17,6 +17,7 @@
     "express-rate-limit": "^7.4.0",
     "@supabase/supabase-js": "^2.45.0",
     "joi": "^17.13.3",
-    "swagger-ui-express": "^5.0.0"
+    "swagger-ui-express": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8"
   }
 }
