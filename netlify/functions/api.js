@@ -1,8 +1,11 @@
-// Serverless API (Netlify Functions)
+// Serverless API (Netlify Functions) — نسخة مع مسار تشخيص متقدم
 // Endpoints:
 //   GET /api/health
 //   GET /api/diagnostics
-//   GET /api/commission-rules?limit=50 (اقصى حد افتراضي 50)
+//   GET /api/_probe              ← جديد (DNS/TLS/REST فحص)
+//   GET /api/commission-rules?limit=50
+
+const dns = require("dns").promises;
 
 const json = (status, body = {}) => ({
   statusCode: status,
@@ -16,13 +19,9 @@ const json = (status, body = {}) => ({
 });
 
 exports.handler = async (event) => {
-  // نتأكد من CORS للـ preflight
   if (event.httpMethod === "OPTIONS") return json(204);
 
-  // نطبّع المسار بحيث يشتغل محليًا وعلى نتلايفاي
-  const path = (event.path || "")
-    .replace("/.netlify/functions/api", "/api");
-
+  const path = (event.path || "").replace("/.netlify/functions/api", "/api");
   const SUPABASE_URL = process.env.SUPABASE_URL || "";
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
@@ -31,23 +30,16 @@ exports.handler = async (event) => {
     return json(200, { ok: true, msg: "API is running" });
   }
 
-  // 2) /api/diagnostics
+  // 2) /api/diagnostics (سريع)
   if (path.endsWith("/api/diagnostics")) {
-    const env = {
-      url: Boolean(SUPABASE_URL),
-      key: Boolean(SERVICE_KEY),
-    };
-
-    // نحاول نعمل ping بسيط على PostgREST
+    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
     let supabase = { ok: false };
+
     if (env.url && env.key) {
       try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
           method: "GET",
-          headers: {
-            apikey: SERVICE_KEY,
-            Authorization: `Bearer ${SERVICE_KEY}`,
-          },
+          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
         });
         supabase.ok = r.ok;
         supabase.status = r.status;
@@ -58,11 +50,91 @@ exports.handler = async (event) => {
     } else {
       supabase = { ok: false, error: "Missing SUPABASE_URL or SERVICE_KEY" };
     }
-
     return json(200, { ok: true, env, supabase });
   }
 
-  // 3) /api/commission-rules  (قراءة فقط)
+  // 3) /api/_probe (متقدم: DNS + TLS + REST)
+  if (path.endsWith("/api/_probe")) {
+    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
+    const result = { ok: true, env };
+
+    if (!env.url) return json(200, { ...result, note: "No SUPABASE_URL" });
+
+    let host = null;
+    try {
+      host = new URL(SUPABASE_URL).hostname;
+      result.host = host;
+    } catch (e) {
+      return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) });
+    }
+
+    // DNS
+    try {
+      result.dns4 = await dns.resolve4(host);
+    } catch (e) {
+      result.dns4 = { error: e?.code || e?.message || String(e) };
+    }
+    try {
+      result.dns6 = await dns.resolve6(host);
+    } catch (e) {
+      result.dns6 = { error: e?.code || e?.message || String(e) };
+    }
+
+    // TLS/HTTP HEAD على الجذر
+    try {
+      const r = await fetch(`${SUPABASE_URL}`, { method: "HEAD" });
+      result.tls_head = { ok: r.ok, status: r.status };
+    } catch (e) {
+      result.tls_head = { ok: false, error: e?.message || String(e) };
+    }
+
+    // REST HEAD/GET على /rest/v1
+    try {
+      const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, {
+        method: "GET",
+        headers: {
+          apikey: SERVICE_KEY || "",
+          Authorization: SERVICE_KEY ? `Bearer ${SERVICE_KEY}` : "",
+        },
+      });
+      result.rest_v1 = { ok: r1.ok, status: r1.status };
+      try {
+        const text = await r1.text();
+        result.rest_v1_body_sample = text.slice(0, 200);
+      } catch (_) {}
+    } catch (e) {
+      result.rest_v1 = { ok: false, error: e?.message || String(e) };
+    }
+
+    // (اختياري) استعلام خفيف على جدول commission_rules
+    if (env.key) {
+      try {
+        const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
+        url.searchParams.set("select", "id");
+        url.searchParams.set("limit", "1");
+        const r2 = await fetch(url, {
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            "Range-Unit": "items",
+            Range: "0-0",
+          },
+        });
+        result.query = { ok: r2.ok, status: r2.status };
+        if (!r2.ok) {
+          result.query_error_sample = await r2.text().catch(() => "");
+        }
+      } catch (e) {
+        result.query = { ok: false, error: e?.message || String(e) };
+      }
+    }
+
+    // ملاحظة IPv4 أولاً
+    result.note = "Ensure server started with NODE_OPTIONS='--dns-result-order=ipv4first'";
+    return json(200, result);
+  }
+
+  // 4) /api/commission-rules
   if (path.endsWith("/api/commission-rules")) {
     if (!SUPABASE_URL || !SERVICE_KEY) {
       return json(500, { ok: false, error: "Missing Supabase env vars" });
@@ -71,7 +143,7 @@ exports.handler = async (event) => {
     const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
     const limit = Number(new URL(event.rawUrl).searchParams.get("limit")) || 50;
     url.searchParams.set("select", "*");
-    url.searchParams.set("order", "updated_at.desc");
+    url.searchParams.set("order", "updated_at.desc.nullslast");
     url.searchParams.set("limit", String(limit));
 
     try {
@@ -95,6 +167,5 @@ exports.handler = async (event) => {
     }
   }
 
-  // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
