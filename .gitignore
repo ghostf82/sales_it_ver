@@ -1,5 +1,4 @@
-node_modules
-dist
+# Env files
 .env
 .env.*
-.DS_Store
+!.env.example
