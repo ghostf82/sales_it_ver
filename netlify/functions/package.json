@@ -1,8 +1,5 @@
 {
-  "name": "commission-api-functions",
+  "name": "netlify-functions",
   "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "serverless-http": "^3.2.0"
-  }
+  "private": true
 }
