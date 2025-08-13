@@ -1,8 +1,8 @@
-// Serverless API (Netlify Functions) — نسخة مع مسار تشخيص متقدم
+// Serverless API (Netlify Functions) — مع فحص متقدّم واختياري X-API-KEY
 // Endpoints:
 //   GET /api/health
 //   GET /api/diagnostics
-//   GET /api/_probe              ← جديد (DNS/TLS/REST فحص)
+//   GET /api/_probe
 //   GET /api/commission-rules?limit=50
 
 const dns = require("dns").promises;
@@ -13,10 +13,25 @@ const json = (status, body = {}) => ({
     "content-type": "application/json; charset=utf-8",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization",
+    "access-control-allow-headers": "content-type,authorization,x-api-key",
   },
   body: JSON.stringify(body),
 });
+
+// حماية اختيارية: إذا تم ضبط API_TOKEN في البيئة، نُلزم الهيدر X-API-KEY
+function requireApiKey(event) {
+  const REQUIRED = process.env.API_TOKEN || "";
+  if (!REQUIRED) return null; // غير مفعّل
+  const h = event.headers || {};
+  const got =
+    h["x-api-key"] ||
+    h["X-API-KEY"] ||
+    h["x-api-Key"] ||
+    h["X-Api-Key"] ||
+    "";
+  if (String(got) === String(REQUIRED)) return null;
+  return json(401, { ok: false, error: "Unauthorized: missing or invalid X-API-KEY" });
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json(204);
@@ -34,7 +49,6 @@ exports.handler = async (event) => {
   if (path.endsWith("/api/diagnostics")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
     let supabase = { ok: false };
-
     if (env.url && env.key) {
       try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
@@ -53,11 +67,10 @@ exports.handler = async (event) => {
     return json(200, { ok: true, env, supabase });
   }
 
-  // 3) /api/_probe (متقدم: DNS + TLS + REST)
+  // 3) /api/_probe (DNS + TLS + REST)
   if (path.endsWith("/api/_probe")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
     const result = { ok: true, env };
-
     if (!env.url) return json(200, { ...result, note: "No SUPABASE_URL" });
 
     let host = null;
@@ -68,7 +81,6 @@ exports.handler = async (event) => {
       return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) });
     }
 
-    // DNS
     try {
       result.dns4 = await dns.resolve4(host);
     } catch (e) {
@@ -80,7 +92,6 @@ exports.handler = async (event) => {
       result.dns6 = { error: e?.code || e?.message || String(e) };
     }
 
-    // TLS/HTTP HEAD على الجذر
     try {
       const r = await fetch(`${SUPABASE_URL}`, { method: "HEAD" });
       result.tls_head = { ok: r.ok, status: r.status };
@@ -88,7 +99,6 @@ exports.handler = async (event) => {
       result.tls_head = { ok: false, error: e?.message || String(e) };
     }
 
-    // REST HEAD/GET على /rest/v1
     try {
       const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, {
         method: "GET",
@@ -106,36 +116,16 @@ exports.handler = async (event) => {
       result.rest_v1 = { ok: false, error: e?.message || String(e) };
     }
 
-    // (اختياري) استعلام خفيف على جدول commission_rules
-    if (env.key) {
-      try {
-        const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
-        url.searchParams.set("select", "id");
-        url.searchParams.set("limit", "1");
-        const r2 = await fetch(url, {
-          headers: {
-            apikey: SERVICE_KEY,
-            Authorization: `Bearer ${SERVICE_KEY}`,
-            "Range-Unit": "items",
-            Range: "0-0",
-          },
-        });
-        result.query = { ok: r2.ok, status: r2.status };
-        if (!r2.ok) {
-          result.query_error_sample = await r2.text().catch(() => "");
-        }
-      } catch (e) {
-        result.query = { ok: false, error: e?.message || String(e) };
-      }
-    }
-
-    // ملاحظة IPv4 أولاً
-    result.note = "Ensure server started with NODE_OPTIONS='--dns-result-order=ipv4first'";
+    result.note = "Use NODE_OPTIONS='--dns-result-order=ipv4first' locally if needed.";
     return json(200, result);
   }
 
-  // 4) /api/commission-rules
+  // 4) /api/commission-rules  (قراءة فقط حالياً)
   if (path.endsWith("/api/commission-rules")) {
+    // تحقّق X-API-KEY (لو API_TOKEN مضبوط)
+    const unauthorized = requireApiKey(event);
+    if (unauthorized) return unauthorized;
+
     if (!SUPABASE_URL || !SERVICE_KEY) {
       return json(500, { ok: false, error: "Missing Supabase env vars" });
     }
@@ -154,12 +144,10 @@ exports.handler = async (event) => {
           Prefer: "count=none",
         },
       });
-
       if (!r.ok) {
         const text = await r.text();
         return json(r.status, { ok: false, error: text });
       }
-
       const data = await r.json();
       return json(200, { ok: true, data });
     } catch (e) {
