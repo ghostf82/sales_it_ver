@@ -1,10 +1,9 @@
-# netlify.toml
+[build]
+  functions = "netlify/functions"
 
-[functions]
-node_bundler = "esbuild"
-directory = "netlify/functions"
-
+# نعيد توجيه أي طلب يبدأ بـ /api/* لوظيفة api
 [[redirects]]
-from = "/api/*"
-to = "/.netlify/functions/api/:splat"
-status = 200
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
