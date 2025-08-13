@@ -1,10 +1,9 @@
 // api/controllers/commissionRulesController.js
 'use strict';
 
-const { supabase, disabled } = require('../config/supabase');
 const crypto = require('crypto');
 
-// ---- stub data when Supabase is disabled ----
+// ---- stub data always enabled ----
 const STUB_DEFAULT = [
   {
     id: '11111111-1111-4111-8111-111111111111',
@@ -54,164 +53,68 @@ function toOut(rule) {
 }
 
 /** Get all commission rules */
-const getAllCommissionRules = async (_req, res, next) => {
-  try {
-    if (disabled) {
-      const data = [...stubData]
-        .sort((a, b) => String(a.category).localeCompare(String(b.category)))
-        .map(toOut);
-      return res.json({ success: true, source: 'stub', data });
-    }
-
-    const { data, error } = await supabase
-      .from('commission_rules')
-      .select('*')
-      .order('category');
-
-    if (error) throw error;
-    res.json({ success: true, data: (data || []).map(toOut) });
-  } catch (error) {
-    next(error);
-  }
+const getAllCommissionRules = async (_req, res) => {
+  const data = [...stubData]
+    .sort((a, b) => String(a.category).localeCompare(String(b.category)))
+    .map(toOut);
+  return res.json({ success: true, source: 'stub', data });
 };
 
 /** Get commission rule by ID */
-const getCommissionRuleById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    if (disabled) {
-      const item = stubData.find(r => r.id === id);
-      if (!item) return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      return res.json({ success: true, source: 'stub', data: toOut(item) });
-    }
-
-    const { data, error } = await supabase
-      .from('commission_rules')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      }
-      throw error;
-    }
-    res.json({ success: true, data: toOut(data) });
-  } catch (error) {
-    next(error);
-  }
+const getCommissionRuleById = async (req, res) => {
+  const { id } = req.params;
+  const item = stubData.find(r => r.id === id);
+  if (!item) return res.status(404).json({ success: false, error: 'Commission rule not found' });
+  return res.json({ success: true, source: 'stub', data: toOut(item) });
 };
 
 /** Create new commission rule */
-const createCommissionRule = async (req, res, next) => {
-  try {
-    const {
-      category,
-      tier1_from, tier1_to, tier1_rate,
-      tier2_from, tier2_to, tier2_rate,
-      tier3_from, tier3_rate
-    } = req.body || {};
+const createCommissionRule = async (req, res) => {
+  const {
+    category,
+    tier1_from, tier1_to, tier1_rate,
+    tier2_from, tier2_to, tier2_rate,
+    tier3_from, tier3_rate
+  } = req.body || {};
 
-    if (disabled) {
-      const item = {
-        id: uuid(),
-        category,
-        tier1_from, tier1_to, tier1_rate,
-        tier2_from, tier2_to, tier2_rate,
-        tier3_from, tier3_rate,
-        created_at: nowIso(),
-        updated_at: nowIso()
-      };
-      stubData.push(item);
-      return res.status(201).json({ success: true, source: 'stub', data: toOut(item) });
-    }
-
-    const { data, error } = await supabase
-      .from('commission_rules')
-      .insert([{
-        category,
-        tier1_from, tier1_to, tier1_rate,
-        tier2_from, tier2_to, tier2_rate,
-        tier3_from, tier3_rate
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.status(201).json({ success: true, data: toOut(data) });
-  } catch (error) {
-    next(error);
-  }
+  const item = {
+    id: uuid(),
+    category,
+    tier1_from, tier1_to, tier1_rate,
+    tier2_from, tier2_to, tier2_rate,
+    tier3_from, tier3_rate,
+    created_at: nowIso(),
+    updated_at: nowIso()
+  };
+  stubData.push(item);
+  return res.status(201).json({ success: true, source: 'stub', data: toOut(item) });
 };
 
 /** Update commission rule */
-const updateCommissionRule = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const {
-      category,
-      tier1_from, tier1_to, tier1_rate,
-      tier2_from, tier2_to, tier2_rate,
-      tier3_from, tier3_rate
-    } = req.body || {};
+const updateCommissionRule = async (req, res) => {
+  const { id } = req.params;
+  const {
+    category,
+    tier1_from, tier1_to, tier1_rate,
+    tier2_from, tier2_to, tier2_rate,
+    tier3_from, tier3_rate
+  } = req.body || {};
 
-    if (disabled) {
-      const i = stubData.findIndex(r => r.id === id);
-      if (i === -1) return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      stubData[i] = { ...stubData[i], category, tier1_from, tier1_to, tier1_rate, tier2_from, tier2_to, tier2_rate, tier3_from, tier3_rate, updated_at: nowIso() };
-      return res.json({ success: true, source: 'stub', data: toOut(stubData[i]) });
-    }
-
-    const { data, error } = await supabase
-      .from('commission_rules')
-      .update({
-        category,
-        tier1_from, tier1_to, tier1_rate,
-        tier2_from, tier2_to, tier2_rate,
-        tier3_from, tier3_rate
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      }
-      throw error;
-    }
-    res.json({ success: true, data: toOut(data) });
-  } catch (error) {
-    next(error);
-  }
+  const i = stubData.findIndex(r => r.id === id);
+  if (i === -1) return res.status(404).json({ success: false, error: 'Commission rule not found' });
+  stubData[i] = { ...stubData[i], category, tier1_from, tier1_to, tier1_rate, tier2_from, tier2_to, tier2_rate, tier3_from, tier3_rate, updated_at: nowIso() };
+  return res.json({ success: true, source: 'stub', data: toOut(stubData[i]) });
 };
 
 /** Delete commission rule */
-const deleteCommissionRule = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    if (disabled) {
-      const before = stubData.length;
-      stubData = stubData.filter(r => r.id !== id);
-      if (stubData.length === before) {
-        return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      }
-      return res.json({ success: true, source: 'stub', data: { id } });
-    }
-
-    const { error } = await supabase
-      .from('commission_rules')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-    res.json({ success: true, data: { message: 'Commission rule deleted successfully' } });
-  } catch (error) {
-    next(error);
+const deleteCommissionRule = async (req, res) => {
+  const { id } = req.params;
+  const before = stubData.length;
+  stubData = stubData.filter(r => r.id !== id);
+  if (stubData.length === before) {
+    return res.status(404).json({ success: false, error: 'Commission rule not found' });
   }
+  return res.json({ success: true, source: 'stub', data: { id } });
 };
 
 module.exports = {
@@ -221,9 +124,3 @@ module.exports = {
   updateCommissionRule,
   deleteCommissionRule
 };
-
-// safety alias (unchanged)
-module.exports.getAllCommissionRules = module.exports.getAllCommissionRules
-  || module.exports.getCommissionRules
-  || module.exports.listCommissionRules
-  || module.exports.getAll;
