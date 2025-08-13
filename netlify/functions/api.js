@@ -1,9 +1,11 @@
-// Serverless API (Netlify Functions) — مع فحص متقدّم واختياري X-API-KEY
+// Serverless API (Netlify Functions) — مع فحص متقدّم + حماية X-API-KEY + حاسبة عمولة
 // Endpoints:
 //   GET /api/health
 //   GET /api/diagnostics
 //   GET /api/_probe
 //   GET /api/commission-rules?limit=50
+//   GET /api/calc-commission?target=250000&sales=350000&category=اسمنتي
+//      أو: ...&tier1_rate=0.0031&tier2_rate=0.0063&tier3_rate=0.0079 (لو مش هتقرأ من القواعد)
 
 const dns = require("dns").promises;
 
@@ -18,17 +20,13 @@ const json = (status, body = {}) => ({
   body: JSON.stringify(body),
 });
 
-// حماية اختيارية: إذا تم ضبط API_TOKEN في البيئة، نُلزم الهيدر X-API-KEY
+// حماية اختيارية: لو API_TOKEN مضبوط، نطلب X-API-KEY
 function requireApiKey(event) {
   const REQUIRED = process.env.API_TOKEN || "";
-  if (!REQUIRED) return null; // غير مفعّل
+  if (!REQUIRED) return null;
   const h = event.headers || {};
   const got =
-    h["x-api-key"] ||
-    h["X-API-KEY"] ||
-    h["x-api-Key"] ||
-    h["X-Api-Key"] ||
-    "";
+    h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || "";
   if (String(got) === String(REQUIRED)) return null;
   return json(401, { ok: false, error: "Unauthorized: missing or invalid X-API-KEY" });
 }
@@ -45,7 +43,7 @@ exports.handler = async (event) => {
     return json(200, { ok: true, msg: "API is running" });
   }
 
-  // 2) /api/diagnostics (سريع)
+  // 2) /api/diagnostics
   if (path.endsWith("/api/diagnostics")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
     let supabase = { ok: false };
@@ -81,16 +79,8 @@ exports.handler = async (event) => {
       return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) });
     }
 
-    try {
-      result.dns4 = await dns.resolve4(host);
-    } catch (e) {
-      result.dns4 = { error: e?.code || e?.message || String(e) };
-    }
-    try {
-      result.dns6 = await dns.resolve6(host);
-    } catch (e) {
-      result.dns6 = { error: e?.code || e?.message || String(e) };
-    }
+    try { result.dns4 = await dns.resolve4(host); } catch (e) { result.dns4 = { error: e?.code || e?.message || String(e) }; }
+    try { result.dns6 = await dns.resolve6(host); } catch (e) { result.dns6 = { error: e?.code || e?.message || String(e) }; }
 
     try {
       const r = await fetch(`${SUPABASE_URL}`, { method: "HEAD" });
@@ -108,10 +98,7 @@ exports.handler = async (event) => {
         },
       });
       result.rest_v1 = { ok: r1.ok, status: r1.status };
-      try {
-        const text = await r1.text();
-        result.rest_v1_body_sample = text.slice(0, 200);
-      } catch (_) {}
+      try { result.rest_v1_body_sample = (await r1.text()).slice(0, 200); } catch (_) {}
     } catch (e) {
       result.rest_v1 = { ok: false, error: e?.message || String(e) };
     }
@@ -120,9 +107,8 @@ exports.handler = async (event) => {
     return json(200, result);
   }
 
-  // 4) /api/commission-rules  (قراءة فقط حالياً)
+  // 4) /api/commission-rules (قراءة فقط)
   if (path.endsWith("/api/commission-rules")) {
-    // تحقّق X-API-KEY (لو API_TOKEN مضبوط)
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
 
@@ -155,5 +141,79 @@ exports.handler = async (event) => {
     }
   }
 
+  // 5) /api/calc-commission — حاسبة العمولة
+  if (path.endsWith("/api/calc-commission")) {
+    // حماية X-API-KEY لو مفعّلة
+    const unauthorized = requireApiKey(event);
+    if (unauthorized) return unauthorized;
+
+    const url = new URL(event.rawUrl);
+    const sales  = Number(url.searchParams.get("sales")  || NaN);
+    const target = Number(url.searchParams.get("target") || NaN);
+    const category = url.searchParams.get("category") || "";
+
+    let tier1_rate = url.searchParams.get("tier1_rate");
+    let tier2_rate = url.searchParams.get("tier2_rate");
+    let tier3_rate = url.searchParams.get("tier3_rate");
+
+    if (!Number.isFinite(sales) || !Number.isFinite(target) || target <= 0) {
+      return json(400, { ok: false, error: "Missing or invalid 'sales' or 'target'." });
+    }
+
+    // لو معدلات غير ممررة وحابب نقرأ من Supabase بناء على category
+    if ((!tier1_rate || !tier2_rate || !tier3_rate) && category && SUPABASE_URL && SERVICE_KEY) {
+      try {
+        const q = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
+        q.searchParams.set("select", "tier1_rate,tier2_rate,tier3_rate");
+        q.searchParams.set("category", `eq.${category}`);
+        q.searchParams.set("limit", "1");
+        const r = await fetch(q, {
+          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+        });
+        if (r.ok) {
+          const arr = await r.json();
+          if (arr && arr[0]) {
+            tier1_rate = String(arr[0].tier1_rate);
+            tier2_rate = String(arr[0].tier2_rate);
+            tier3_rate = String(arr[0].tier3_rate);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // تأكدنا من وجود المعدلات الآن
+    const t1 = Number(tier1_rate);
+    const t2 = Number(tier2_rate);
+    const t3 = Number(tier3_rate);
+    if (![t1, t2, t3].every(Number.isFinite)) {
+      return json(400, { ok: false, error: "Rates are missing. Provide tier*_rate or pass a valid category with rules." });
+    }
+
+    const achievement = (sales / target) * 100;
+
+    // طبقًا للوصف المعتمد:
+    const base1 = target * 0.70;
+    const base2 = target * 0.30;
+    const extra  = Math.max(0, sales - target);
+
+    const amount1 = base1 * t1;
+    const amount2 = achievement >= 71 ? base2 * t2 : 0;
+    const amount3 = achievement > 100 ? extra  * t3 : 0;
+    const total   = amount1 + amount2 + amount3;
+
+    return json(200, {
+      ok: true,
+      input: { sales, target, category: category || null, tier1_rate: t1, tier2_rate: t2, tier3_rate: t3 },
+      achievement: Number(achievement.toFixed(2)),
+      breakdown: {
+        tier1: { base: base1, rate: t1, amount: Number(amount1.toFixed(2)) },
+        tier2: { base: achievement >= 71 ? base2 : 0, rate: t2, amount: Number(amount2.toFixed(2)) },
+        tier3: { base: extra, rate: t3, amount: Number(amount3.toFixed(2)) }
+      },
+      total: Number(total.toFixed(2))
+    });
+  }
+
+  // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
