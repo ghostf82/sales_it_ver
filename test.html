@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>اختبار حاسبة العمولة</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,Segoe UI,Tahoma,Arial,sans-serif;max-width:820px;margin:24px auto;padding:0 12px}
+    fieldset{border:1px solid #ddd;border-radius:10px;padding:12px 14px;margin:12px 0}
+    input,button{padding:10px;border:1px solid #ccc;border-radius:10px;font-size:16px}
+    label{display:block;margin:8px 0 4px}
+    button{cursor:pointer}
+    pre{background:#f7f7f9;border:1px solid #eee;border-radius:10px;padding:12px;white-space:pre-wrap}
+    .row{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+  </style>
+</head>
+<body>
+  <h1>اختبار حاسبة العمولة (Browser)</h1>
+
+  <fieldset>
+    <legend>إعدادات</legend>
+    <label>API Base</label>
+    <input id="base" value="https://sales-it-ver.netlify.app/api" style="width:100%" />
+    <label>X-API-KEY (أدخِل المفتاح وقت التشغيل)</label>
+    <input id="key" type="password" placeholder="أدخل المفتاح هنا" style="width:100%" />
+  </fieldset>
+
+  <fieldset>
+    <legend>حساب بالـ Category (يسحب المعدلات من Supabase)</legend>
+    <div class="row">
+      <div><label>Target</label><input id="targetC" type="number" value="250000" /></div>
+      <div><label>Sales</label><input id="salesC" type="number" value="350000" /></div>
+      <div><label>Category</label><input id="cat" value="اسمنتي" /></div>
+    </div>
+    <button id="runC">احسب</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>حساب بالمعدلات المُحددة (بدون Category)</legend>
+    <div class="row">
+      <div><label>Target</label><input id="targetR" type="number" value="250000" /></div>
+      <div><label>Sales</label><input id="salesR" type="number" value="350000" /></div>
+      <div><label>tier1_rate</label><input id="r1" type="number" step="0.0001" value="0.0031" /></div>
+      <div><label>tier2_rate</label><input id="r2" type="number" step="0.0001" value="0.0063" /></div>
+      <div><label>tier3_rate</label><input id="r3" type="number" step="0.0001" value="0.0079" /></div>
+    </div>
+    <button id="runR">احسب</button>
+  </fieldset>
+
+  <h3>النتيجة</h3>
+  <pre id="out">—</pre>
+
+  <script>
+    const out = document.getElementById('out');
+    const print = (obj) => out.textContent = JSON.stringify(obj, null, 2);
+
+    async function call(url) {
+      const base = document.getElementById('base').value.trim().replace(/\/$/, '');
+      const key  = document.getElementById('key').value.trim();
+      if (!key) return print({ ok:false, error:"أدخل X-API-KEY أولاً" });
+      try {
+        const r = await fetch(base + url, { headers: { "X-API-KEY": key } });
+        const data = await r.json().catch(()=>({error:"non-json"}));
+        print({ status: r.status, ...data });
+      } catch (e) {
+        print({ ok:false, error: String(e) });
+      }
+    }
+
+    document.getElementById('runC').onclick = () => {
+      const target = document.getElementById('targetC').value;
+      const sales  = document.getElementById('salesC').value;
+      const cat    = encodeURIComponent(document.getElementById('cat').value);
+      call(`/calc-commission?target=${target}&sales=${sales}&category=${cat}`);
+    };
+
+    document.getElementById('runR').onclick = () => {
+      const t = document.getElementById('targetR').value;
+      const s = document.getElementById('salesR').value;
+      const r1= document.getElementById('r1').value;
+      const r2= document.getElementById('r2').value;
+      const r3= document.getElementById('r3').value;
+      call(`/calc-commission?target=${t}&sales=${s}&tier1_rate=${r1}&tier2_rate=${r2}&tier3_rate=${r3}`);
+    };
+  </script>
+</body>
+</html>
