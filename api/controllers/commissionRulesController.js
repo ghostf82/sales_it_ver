@@ -4,7 +4,7 @@
 const { supabase, disabled } = require('../config/supabase');
 const crypto = require('crypto');
 
-// ---- بيانات تجريبية عند تعطيل Supabase ----
+// ---- stub data when Supabase is disabled ----
 const STUB_DEFAULT = [
   {
     id: '11111111-1111-4111-8111-111111111111',
@@ -27,8 +27,16 @@ const STUB_DEFAULT = [
 ];
 let stubData = [...STUB_DEFAULT];
 
+const nowIso = () => new Date().toISOString();
+const uuid = () =>
+  (crypto.randomUUID ? crypto.randomUUID() :
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = (Math.random() * 16) | 0, v = c === 'x' ? r : ((r & 0x3) | 0x8);
+      return v.toString(16);
+    })
+  );
+
 function toOut(rule) {
-  // نفس التحويل اللي كنت بتعمله
   return {
     id: rule.id,
     category: rule.category,
@@ -44,18 +52,8 @@ function toOut(rule) {
     updated_at: rule.updated_at
   };
 }
-const nowIso = () => new Date().toISOString();
-const uuid = () =>
-  (crypto.randomUUID ? crypto.randomUUID() :
-    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = (Math.random() * 16) | 0, v = c === 'x' ? r : ((r & 0x3) | 0x8);
-      return v.toString(16);
-    })
-  );
 
-/**
- * Get all commission rules
- */
+/** Get all commission rules */
 const getAllCommissionRules = async (_req, res, next) => {
   try {
     if (disabled) {
@@ -71,28 +69,20 @@ const getAllCommissionRules = async (_req, res, next) => {
       .order('category');
 
     if (error) throw error;
-
-    res.json({
-      success: true,
-      data: (data || []).map(toOut)
-    });
+    res.json({ success: true, data: (data || []).map(toOut) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get commission rule by ID
- */
+/** Get commission rule by ID */
 const getCommissionRuleById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (disabled) {
       const item = stubData.find(r => r.id === id);
-      if (!item) {
-        return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      }
+      if (!item) return res.status(404).json({ success: false, error: 'Commission rule not found' });
       return res.json({ success: true, source: 'stub', data: toOut(item) });
     }
 
@@ -108,33 +98,29 @@ const getCommissionRuleById = async (req, res, next) => {
       }
       throw error;
     }
-
     res.json({ success: true, data: toOut(data) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Create new commission rule
- */
+/** Create new commission rule */
 const createCommissionRule = async (req, res, next) => {
   try {
-    const payload = (({
+    const {
       category,
       tier1_from, tier1_to, tier1_rate,
       tier2_from, tier2_to, tier2_rate,
       tier3_from, tier3_rate
-    }) => ({
-      category, tier1_from, tier1_to, tier1_rate,
-      tier2_from, tier2_to, tier2_rate,
-      tier3_from, tier3_rate
-    }))(req.body || {});
+    } = req.body || {};
 
     if (disabled) {
       const item = {
         id: uuid(),
-        ...payload,
+        category,
+        tier1_from, tier1_to, tier1_rate,
+        tier2_from, tier2_to, tier2_rate,
+        tier3_from, tier3_rate,
         created_at: nowIso(),
         updated_at: nowIso()
       };
@@ -144,47 +130,48 @@ const createCommissionRule = async (req, res, next) => {
 
     const { data, error } = await supabase
       .from('commission_rules')
-      .insert([payload])
+      .insert([{
+        category,
+        tier1_from, tier1_to, tier1_rate,
+        tier2_from, tier2_to, tier2_rate,
+        tier3_from, tier3_rate
+      }])
       .select()
       .single();
 
     if (error) throw error;
-
     res.status(201).json({ success: true, data: toOut(data) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Update commission rule
- */
+/** Update commission rule */
 const updateCommissionRule = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const payload = (({
+    const {
       category,
       tier1_from, tier1_to, tier1_rate,
       tier2_from, tier2_to, tier2_rate,
       tier3_from, tier3_rate
-    }) => ({
-      category, tier1_from, tier1_to, tier1_rate,
-      tier2_from, tier2_to, tier2_rate,
-      tier3_from, tier3_rate
-    }))(req.body || {});
+    } = req.body || {};
 
     if (disabled) {
       const i = stubData.findIndex(r => r.id === id);
-      if (i === -1) {
-        return res.status(404).json({ success: false, error: 'Commission rule not found' });
-      }
-      stubData[i] = { ...stubData[i], ...payload, updated_at: nowIso() };
+      if (i === -1) return res.status(404).json({ success: false, error: 'Commission rule not found' });
+      stubData[i] = { ...stubData[i], category, tier1_from, tier1_to, tier1_rate, tier2_from, tier2_to, tier2_rate, tier3_from, tier3_rate, updated_at: nowIso() };
       return res.json({ success: true, source: 'stub', data: toOut(stubData[i]) });
     }
 
     const { data, error } = await supabase
       .from('commission_rules')
-      .update(payload)
+      .update({
+        category,
+        tier1_from, tier1_to, tier1_rate,
+        tier2_from, tier2_to, tier2_rate,
+        tier3_from, tier3_rate
+      })
       .eq('id', id)
       .select()
       .single();
@@ -195,16 +182,13 @@ const updateCommissionRule = async (req, res, next) => {
       }
       throw error;
     }
-
     res.json({ success: true, data: toOut(data) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Delete commission rule
- */
+/** Delete commission rule */
 const deleteCommissionRule = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -224,11 +208,7 @@ const deleteCommissionRule = async (req, res, next) => {
       .eq('id', id);
 
     if (error) throw error;
-
-    res.json({
-      success: true,
-      data: { message: 'Commission rule deleted successfully' }
-    });
+    res.json({ success: true, data: { message: 'Commission rule deleted successfully' } });
   } catch (error) {
     next(error);
   }
@@ -242,7 +222,7 @@ module.exports = {
   deleteCommissionRule
 };
 
-// Safety alias زي ما هو
+// safety alias (unchanged)
 module.exports.getAllCommissionRules = module.exports.getAllCommissionRules
   || module.exports.getCommissionRules
   || module.exports.listCommissionRules
