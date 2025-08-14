@@ -1,7 +1,7 @@
-// Serverless API (Netlify Functions)
-// - حماية X-API-KEY عبر API_TOKEN
-// - اتصال Supabase بهيدرَين anon/anon (مع fallback لـ service)
-// - مسارات تشخيص متعددة + حاسبة عمولة
+// Serverless API (Netlify Functions) — نسخة إنتاج
+// - حماية عبر X-API-KEY (API_TOKEN)
+// - اتصال Supabase بهيدرَين anon/anon (مع fallback للـ service)
+// - المسارات المتاحة: /api/health ، /api/diagnostics (محمي)، /api/commission-rules ، /api/calc-commission
 
 const dns = require("dns").promises;
 
@@ -50,8 +50,11 @@ exports.handler = async (event) => {
     return json(200, { ok: true, msg: "API is running" });
   }
 
-  // 2) /api/diagnostics — فحص سريع لاتصال Supabase
+  // 2) /api/diagnostics — فحص سريع لاتصال Supabase (محمي بـ API key)
   if (path.endsWith("/api/diagnostics")) {
+    const unauthorized = requireApiKey(event);
+    if (unauthorized) return unauthorized;
+
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     let supabase = { ok: false };
     if (env.url && (env.key || env.anon)) {
@@ -69,39 +72,7 @@ exports.handler = async (event) => {
     return json(200, { ok: true, env, supabase });
   }
 
-  // 3) /api/_probe — DNS/TLS/REST
-  if (path.endsWith("/api/_probe")) {
-    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
-    const result = { ok: true, env };
-    if (!env.url) return json(200, { ...result, note: "No SUPABASE_URL" });
-
-    let host = null;
-    try { host = new URL(SUPABASE_URL).hostname; result.host = host; }
-    catch (e) { return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) }); }
-
-    try { result.dns4 = await dns.resolve4(host); } catch (e) { result.dns4 = { error: e?.code || e?.message || String(e) }; }
-    try { result.dns6 = await dns.resolve6(host); } catch (e) { result.dns6 = { error: e?.code || e?.message || String(e) }; }
-
-    try {
-      const r = await fetch(`${SUPABASE_URL}`, { method: "HEAD" });
-      result.tls_head = { ok: r.ok, status: r.status };
-    } catch (e) {
-      result.tls_head = { ok: false, error: e?.message || String(e) };
-    }
-
-    try {
-      const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, { method: "GET", headers: sbHeaders() });
-      result.rest_v1 = { ok: r1.ok, status: r1.status };
-      try { result.rest_v1_body_sample = (await r1.text()).slice(0, 200); } catch (_) {}
-    } catch (e) {
-      result.rest_v1 = { ok: false, error: e?.message || String(e) };
-    }
-
-    result.note = "Using anon/anon headers by default.";
-    return json(200, result);
-  }
-
-  // 4) /api/commission-rules — قراءة فقط (تم استبدال select=* بأعمدة مسموح بها للـ anon)
+  // 3) /api/commission-rules — قراءة فقط (أعمدة مسموح بها للـ anon)
   if (path.endsWith("/api/commission-rules")) {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
@@ -132,7 +103,7 @@ exports.handler = async (event) => {
     }
   }
 
-  // 5) /api/calc-commission — حاسبة عمولة (تقدر تقرأ المعدلات من Supabase حسب category)
+  // 4) /api/calc-commission — حاسبة عمولة (تقرأ المعدلات من Supabase إن لزم)
   if (path.endsWith("/api/calc-commission")) {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
@@ -197,101 +168,6 @@ exports.handler = async (event) => {
       },
       total: Number(total.toFixed(2))
     });
-  }
-
-  // 6) /api/_env — تشخيص وجود API_TOKEN
-  if (path.endsWith("/api/_env")) {
-    return json(200, {
-      ok: true,
-      has_api_token: Boolean(process.env.API_TOKEN),
-      api_token_len: process.env.API_TOKEN ? String(process.env.API_TOKEN).length : 0
-    });
-  }
-
-  // 7) /api/_auth-check — يفحص وصول الهيدر ومطابقته دون كشف القيم
-  if (path.endsWith("/api/_auth-check")) {
-    const REQUIRED = (process.env.API_TOKEN || "").trim();
-    const h = event.headers || {};
-    const got = String(
-      h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || ""
-    ).trim();
-
-    return json(200, {
-      ok: true,
-      has_api_token: Boolean(REQUIRED),
-      api_token_len: REQUIRED ? String(REQUIRED).length : 0,
-      got_header: Boolean(got),
-      got_len: got ? String(got).length : 0,
-      match: Boolean(REQUIRED && got && got === REQUIRED)
-    });
-  }
-
-  // 8) /api/_sb — يلخّص مفاتيح Supabase (بدون كشفها)
-  if (path.endsWith("/api/_sb")) {
-    const svc = SERVICE_KEY;
-    const pub = ANON_KEY;
-    let header_alg = null, role = null, iss = null, exp = null;
-    try {
-      const [h, p] = (svc || "").split(".");
-      const b64 = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-      const hd = h ? JSON.parse(b64(h)) : null;
-      const pl = p ? JSON.parse(b64(p)) : null;
-      header_alg = hd?.alg || null;
-      role = pl?.role || null;
-      iss = pl?.iss || null;
-      exp = pl?.exp || null;
-    } catch (_) {}
-    return json(200, {
-      ok: true,
-      has_service_key: Boolean(svc),
-      service_key_len: svc.length,
-      has_anon_key: Boolean(pub),
-      anon_key_len: pub.length,
-      header_alg, role, iss, exp
-    });
-  }
-
-  // 9) /api/_sb-test — استعلام فعلي صغير
-  if (path.endsWith("/api/_sb-test")) {
-    if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
-    try {
-      const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
-      url.searchParams.set("select", "id,category,tier1_rate,tier2_rate,tier3_rate");
-      url.searchParams.set("limit", "1");
-      const r = await fetch(url, { headers: { ...sbHeaders(), Prefer: "count=none" } });
-      const text = await r.text();
-      return json(r.status, { ok: r.ok, status: r.status, bodySample: text.slice(0, 300) });
-    } catch (e) {
-      return json(500, { ok: false, error: e?.message || String(e) });
-    }
-  }
-
-  // 10) /api/_sb-matrix — تركيبات هيدرز للاختبار (اختياري)
-  if (path.endsWith("/api/_sb-matrix")) {
-    if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
-    const combos = [
-      { name: "svc/svc",   apikey: SERVICE_KEY, auth: `Bearer ${SERVICE_KEY}` },
-      { name: "anon/svc",  apikey: ANON_KEY,    auth: `Bearer ${SERVICE_KEY}` },
-      { name: "anon/anon", apikey: ANON_KEY,    auth: `Bearer ${ANON_KEY}` },
-    ];
-    const results = [];
-    for (const c of combos) {
-      const entry = { combo: c.name };
-      try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1`, { method: "GET", headers: { apikey: c.apikey, Authorization: c.auth } });
-        entry.rest_root = { status: r.status, ok: r.ok };
-      } catch (e) { entry.rest_root = { error: String(e) }; }
-      try {
-        const u = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
-        u.searchParams.set("select", "id");
-        u.searchParams.set("limit", "1");
-        const r2 = await fetch(u, { headers: { apikey: c.apikey, Authorization: c.auth, Prefer: "count=none" } });
-        const body = await r2.text();
-        entry.table = { status: r2.status, ok: r2.ok, sample: body.slice(0, 160) };
-      } catch (e) { entry.table = { error: String(e) }; }
-      results.push(entry);
-    }
-    return json(200, { ok: true, results });
   }
 
   // 404 لأي مسار آخر
