@@ -214,6 +214,15 @@ exports.handler = async (event) => {
     });
   }
 
+    // — /api/_env : تشخيص سريع لقيم البيئة (لا يطبع أسرار)
+  if (path.endsWith("/api/_env")) {
+    return json(200, {
+      ok: true,
+      has_api_token: Boolean(process.env.API_TOKEN),
+      api_token_len: process.env.API_TOKEN ? String(process.env.API_TOKEN).length : 0
+    });
+  }
+
   // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
