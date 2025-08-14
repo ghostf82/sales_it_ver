@@ -240,6 +240,31 @@ exports.handler = async (event) => {
     });
   }
 
+    // — /api/_sb : تشخيص مفتاح Supabase (بدون كشف السر)
+  if (path.endsWith("/api/_sb")) {
+    const k = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    let header_alg = null, role = null, iss = null, exp = null;
+    try {
+      const [h, p] = (k || "").split(".");
+      const b64 = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+      const hd = h ? JSON.parse(b64(h)) : null;
+      const pl = p ? JSON.parse(b64(p)) : null;
+      header_alg = hd?.alg || null;
+      role = pl?.role || null;
+      iss = pl?.iss || null;
+      exp = pl?.exp || null;
+    } catch (_) {}
+    return json(200, {
+      ok: true,
+      has_key: Boolean(k),
+      service_key_len: k.length,
+      header_alg,
+      role,
+      iss,
+      exp
+    });
+  }
+
   // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
