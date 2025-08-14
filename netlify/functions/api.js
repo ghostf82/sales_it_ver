@@ -1,7 +1,7 @@
 // Serverless API (Netlify Functions)
 // - حماية X-API-KEY عبر API_TOKEN
-// - تكامل Supabase: apikey = ANON_KEY ، Authorization = Bearer ANON_KEY
-// - نقاط تشخيص متعددة + حاسبة عمولة
+// - اتصال Supabase بهيدرَين anon/anon (مع fallback لـ service)
+// - مسارات تشخيص متعددة + حاسبة عمولة
 
 const dns = require("dns").promises;
 
@@ -16,9 +16,10 @@ const json = (status, body = {}) => ({
   body: JSON.stringify(body),
 });
 
+// حماية اختيارية: لو API_TOKEN مضبوط، نطلب X-API-KEY مطابق
 function requireApiKey(event) {
   const REQUIRED = (process.env.API_TOKEN || "").trim();
-  if (!REQUIRED) return null;
+  if (!REQUIRED) return null; // غير مفعّل
   const h = event.headers || {};
   const got = String(
     h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || ""
@@ -30,13 +31,15 @@ function requireApiKey(event) {
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json(204);
 
+  // توحيد المسار سواء نُودي عبر /.netlify/functions/api أو /api
   const path = (event.path || "").replace("/.netlify/functions/api", "/api");
 
+  // متغيرات البيئة
   const SUPABASE_URL = process.env.SUPABASE_URL || "";
   const SERVICE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   const ANON_KEY     = (process.env.SUPABASE_ANON_KEY || "").trim();
 
-  // مُساعد: هيدرز Supabase الموحّدة (anon/anon مع fallback للـ service)
+  // هيدرز Supabase الموحّدة: apikey=anon ، Authorization=Bearer anon (مع fallback للـ service)
   const sbHeaders = () => ({
     apikey: ANON_KEY || SERVICE_KEY,
     Authorization: `Bearer ${ANON_KEY || SERVICE_KEY}`,
@@ -47,16 +50,13 @@ exports.handler = async (event) => {
     return json(200, { ok: true, msg: "API is running" });
   }
 
-  // 2) /api/diagnostics
+  // 2) /api/diagnostics — فحص سريع لاتصال Supabase
   if (path.endsWith("/api/diagnostics")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     let supabase = { ok: false };
     if (env.url && (env.key || env.anon)) {
       try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
-          method: "GET",
-          headers: sbHeaders(),
-        });
+        const r = await fetch(`${SUPABASE_URL}/rest/v1`, { method: "GET", headers: sbHeaders() });
         supabase.ok = r.ok;
         supabase.status = r.status;
       } catch (e) {
@@ -69,7 +69,7 @@ exports.handler = async (event) => {
     return json(200, { ok: true, env, supabase });
   }
 
-  // 3) /api/_probe
+  // 3) /api/_probe — DNS/TLS/REST
   if (path.endsWith("/api/_probe")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     const result = { ok: true, env };
@@ -101,7 +101,7 @@ exports.handler = async (event) => {
     return json(200, result);
   }
 
-  // 4) /api/commission-rules — قراءة فقط
+  // 4) /api/commission-rules — قراءة فقط (تم استبدال select=* بأعمدة مسموح بها للـ anon)
   if (path.endsWith("/api/commission-rules")) {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
@@ -112,17 +112,15 @@ exports.handler = async (event) => {
 
     const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
     const limit = Number(new URL(event.rawUrl).searchParams.get("limit")) || 50;
-    url.searchParams.set("select", "*");
+    url.searchParams.set(
+      "select",
+      "id,category,tier1_from,tier1_to,tier1_rate,tier2_from,tier2_to,tier2_rate,tier3_from,tier3_rate,created_at,updated_at"
+    );
     url.searchParams.set("order", "updated_at.desc.nullslast");
     url.searchParams.set("limit", String(limit));
 
     try {
-      const r = await fetch(url, {
-        headers: {
-          ...sbHeaders(),          // apikey = anon, Authorization = Bearer anon
-          Prefer: "count=none",
-        },
-      });
+      const r = await fetch(url, { headers: { ...sbHeaders(), Prefer: "count=none" } });
       if (!r.ok) {
         const text = await r.text();
         return json(r.status, { ok: false, error: text });
@@ -134,7 +132,7 @@ exports.handler = async (event) => {
     }
   }
 
-  // 5) /api/calc-commission — حاسبة العمولة
+  // 5) /api/calc-commission — حاسبة عمولة (تقدر تقرأ المعدلات من Supabase حسب category)
   if (path.endsWith("/api/calc-commission")) {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
@@ -201,7 +199,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // 6) /api/_env
+  // 6) /api/_env — تشخيص وجود API_TOKEN
   if (path.endsWith("/api/_env")) {
     return json(200, {
       ok: true,
@@ -210,7 +208,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // 7) /api/_auth-check
+  // 7) /api/_auth-check — يفحص وصول الهيدر ومطابقته دون كشف القيم
   if (path.endsWith("/api/_auth-check")) {
     const REQUIRED = (process.env.API_TOKEN || "").trim();
     const h = event.headers || {};
@@ -228,7 +226,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // 8) /api/_sb
+  // 8) /api/_sb — يلخّص مفاتيح Supabase (بدون كشفها)
   if (path.endsWith("/api/_sb")) {
     const svc = SERVICE_KEY;
     const pub = ANON_KEY;
@@ -253,12 +251,12 @@ exports.handler = async (event) => {
     });
   }
 
-  // 9) /api/_sb-test
+  // 9) /api/_sb-test — استعلام فعلي صغير
   if (path.endsWith("/api/_sb-test")) {
     if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
     try {
       const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
-      url.searchParams.set("select", "id");
+      url.searchParams.set("select", "id,category,tier1_rate,tier2_rate,tier3_rate");
       url.searchParams.set("limit", "1");
       const r = await fetch(url, { headers: { ...sbHeaders(), Prefer: "count=none" } });
       const text = await r.text();
@@ -268,7 +266,7 @@ exports.handler = async (event) => {
     }
   }
 
-  // 10) /api/_sb-matrix (تبقى كما هي لو موجودة عندك للاختبار)
+  // 10) /api/_sb-matrix — تركيبات هيدرز للاختبار (اختياري)
   if (path.endsWith("/api/_sb-matrix")) {
     if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
     const combos = [
@@ -296,5 +294,6 @@ exports.handler = async (event) => {
     return json(200, { ok: true, results });
   }
 
+  // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
