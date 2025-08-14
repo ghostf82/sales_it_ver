@@ -307,9 +307,10 @@ exports.handler = async (event) => {
       return json(500, { ok: false, error: "Missing Supabase env vars" });
     }
 
-    const combos = [
-      { name: "svc/svc",  apikey: SERVICE_KEY,                       auth: `Bearer ${SERVICE_KEY}` },
-      { name: "anon/svc", apikey: (process.env.SUPABASE_ANON_KEY||""), auth: `Bearer ${SERVICE_KEY}` },
+       const combos = [
+      { name: "svc/svc",   apikey: SERVICE_KEY,                        auth: `Bearer ${SERVICE_KEY}` },
+      { name: "anon/svc",  apikey: (process.env.SUPABASE_ANON_KEY||""), auth: `Bearer ${SERVICE_KEY}` },
+      { name: "anon/anon", apikey: (process.env.SUPABASE_ANON_KEY||""), auth: `Bearer ${process.env.SUPABASE_ANON_KEY||""}` },
     ];
 
     const results = [];
