@@ -271,6 +271,32 @@ exports.handler = async (event) => {
       exp
     });
   }
+  // — /api/_sb-test : يجرب نداء REST فعلي على جدول commission_rules
+  if (path.endsWith("/api/_sb-test")) {
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      return json(500, { ok: false, error: "Missing Supabase env vars" });
+    }
+    try {
+      const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
+      url.searchParams.set("select", "id");
+      url.searchParams.set("limit", "1");
+      const r = await fetch(url, {
+        headers: {
+          apikey: ANON_KEY || SERVICE_KEY,            // apikey = anon (أو service كـ fallback)
+          Authorization: `Bearer ${SERVICE_KEY}`,     // Authorization = service_role
+          Prefer: "count=none",
+        },
+      });
+      const text = await r.text(); // قد يكون JSON أو رسالة خطأ
+      return json(r.status, {
+        ok: r.ok,
+        status: r.status,
+        bodySample: text.slice(0, 300)
+      });
+    } catch (e) {
+      return json(500, { ok: false, error: e?.message || String(e) });
+    }
+  }
 
   // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
