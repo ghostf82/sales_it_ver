@@ -3,9 +3,11 @@
 //   GET /api/health
 //   GET /api/diagnostics
 //   GET /api/_probe
+//   GET /api/_env
+//   GET /api/_auth-check
 //   GET /api/commission-rules?limit=50
 //   GET /api/calc-commission?target=250000&sales=350000&category=اسمنتي
-//      أو: ...&tier1_rate=0.0031&tier2_rate=0.0063&tier3_rate=0.0079 (لو مش هتقرأ من القواعد)
+//      أو: ...&tier1_rate=0.0031&tier2_rate=0.0063&tier3_rate=0.0079
 
 const dns = require("dns").promises;
 
@@ -22,12 +24,13 @@ const json = (status, body = {}) => ({
 
 // حماية اختيارية: لو API_TOKEN مضبوط، نطلب X-API-KEY
 function requireApiKey(event) {
-  const REQUIRED = process.env.API_TOKEN || "";
+  const REQUIRED = (process.env.API_TOKEN || "").trim();
   if (!REQUIRED) return null;
   const h = event.headers || {};
-  const got =
-    h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || "";
-  if (String(got) === String(REQUIRED)) return null;
+  const got = String(
+    h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || ""
+  ).trim();
+  if (got && got === REQUIRED) return null;
   return json(401, { ok: false, error: "Unauthorized: missing or invalid X-API-KEY" });
 }
 
@@ -143,7 +146,6 @@ exports.handler = async (event) => {
 
   // 5) /api/calc-commission — حاسبة العمولة
   if (path.endsWith("/api/calc-commission")) {
-    // حماية X-API-KEY لو مفعّلة
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
 
@@ -160,7 +162,7 @@ exports.handler = async (event) => {
       return json(400, { ok: false, error: "Missing or invalid 'sales' or 'target'." });
     }
 
-    // لو معدلات غير ممررة وحابب نقرأ من Supabase بناء على category
+    // لو المعدلات مش متوفرة وتم تمرير category نقرأها من Supabase
     if ((!tier1_rate || !tier2_rate || !tier3_rate) && category && SUPABASE_URL && SERVICE_KEY) {
       try {
         const q = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
@@ -181,7 +183,6 @@ exports.handler = async (event) => {
       } catch (_) {}
     }
 
-    // تأكدنا من وجود المعدلات الآن
     const t1 = Number(tier1_rate);
     const t2 = Number(tier2_rate);
     const t3 = Number(tier3_rate);
@@ -190,8 +191,6 @@ exports.handler = async (event) => {
     }
 
     const achievement = (sales / target) * 100;
-
-    // طبقًا للوصف المعتمد:
     const base1 = target * 0.70;
     const base2 = target * 0.30;
     const extra  = Math.max(0, sales - target);
@@ -214,12 +213,30 @@ exports.handler = async (event) => {
     });
   }
 
-    // — /api/_env : تشخيص سريع لقيم البيئة (لا يطبع أسرار)
+  // 6) /api/_env : تشخيص سريع لقيم البيئة (لا يطبع أسرار)
   if (path.endsWith("/api/_env")) {
     return json(200, {
       ok: true,
       has_api_token: Boolean(process.env.API_TOKEN),
       api_token_len: process.env.API_TOKEN ? String(process.env.API_TOKEN).length : 0
+    });
+  }
+
+  // 7) /api/_auth-check : يفحص وصول الهيدر ومطابقته دون كشف القيم
+  if (path.endsWith("/api/_auth-check")) {
+    const REQUIRED = (process.env.API_TOKEN || "").trim();
+    const h = event.headers || {};
+    const got = String(
+      h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || ""
+    ).trim();
+
+    return json(200, {
+      ok: true,
+      has_api_token: Boolean(REQUIRED),
+      api_token_len: REQUIRED ? String(REQUIRED).length : 0,
+      got_header: Boolean(got),
+      got_len: got ? String(got).length : 0,
+      match: Boolean(REQUIRED && got && got === REQUIRED)
     });
   }
 
