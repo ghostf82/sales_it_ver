@@ -5,6 +5,7 @@
 //   GET /api/_probe
 //   GET /api/_env
 //   GET /api/_auth-check
+//   GET /api/_sb
 //   GET /api/commission-rules?limit=50
 //   GET /api/calc-commission?target=250000&sales=350000&category=اسمنتي
 //      أو: ...&tier1_rate=0.0031&tier2_rate=0.0063&tier3_rate=0.0079
@@ -39,7 +40,8 @@ exports.handler = async (event) => {
 
   const path = (event.path || "").replace("/.netlify/functions/api", "/api");
   const SUPABASE_URL = process.env.SUPABASE_URL || "";
-  const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const ANON_KEY     = process.env.SUPABASE_ANON_KEY || ""; // جديد: نستخدمه في apikey
 
   // 1) /api/health
   if (path.endsWith("/api/health")) {
@@ -48,13 +50,16 @@ exports.handler = async (event) => {
 
   // 2) /api/diagnostics
   if (path.endsWith("/api/diagnostics")) {
-    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
+    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     let supabase = { ok: false };
     if (env.url && env.key) {
       try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
           method: "GET",
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+          headers: {
+            apikey: ANON_KEY || SERVICE_KEY,                  // apikey = anon (أو service كـ fallback)
+            Authorization: `Bearer ${SERVICE_KEY}`,           // Authorization = service_role
+          },
         });
         supabase.ok = r.ok;
         supabase.status = r.status;
@@ -70,17 +75,13 @@ exports.handler = async (event) => {
 
   // 3) /api/_probe (DNS + TLS + REST)
   if (path.endsWith("/api/_probe")) {
-    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY) };
+    const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     const result = { ok: true, env };
     if (!env.url) return json(200, { ...result, note: "No SUPABASE_URL" });
 
     let host = null;
-    try {
-      host = new URL(SUPABASE_URL).hostname;
-      result.host = host;
-    } catch (e) {
-      return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) });
-    }
+    try { host = new URL(SUPABASE_URL).hostname; result.host = host; }
+    catch (e) { return json(200, { ...result, error: "Invalid SUPABASE_URL format", detail: String(e) }); }
 
     try { result.dns4 = await dns.resolve4(host); } catch (e) { result.dns4 = { error: e?.code || e?.message || String(e) }; }
     try { result.dns6 = await dns.resolve6(host); } catch (e) { result.dns6 = { error: e?.code || e?.message || String(e) }; }
@@ -96,8 +97,8 @@ exports.handler = async (event) => {
       const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, {
         method: "GET",
         headers: {
-          apikey: SERVICE_KEY || "",
-          Authorization: SERVICE_KEY ? `Bearer ${SERVICE_KEY}` : "",
+          apikey: ANON_KEY || SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
         },
       });
       result.rest_v1 = { ok: r1.ok, status: r1.status };
@@ -128,7 +129,7 @@ exports.handler = async (event) => {
     try {
       const r = await fetch(url, {
         headers: {
-          apikey: SERVICE_KEY,
+          apikey: ANON_KEY || SERVICE_KEY,
           Authorization: `Bearer ${SERVICE_KEY}`,
           Prefer: "count=none",
         },
@@ -170,7 +171,10 @@ exports.handler = async (event) => {
         q.searchParams.set("category", `eq.${category}`);
         q.searchParams.set("limit", "1");
         const r = await fetch(q, {
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+          headers: {
+            apikey: ANON_KEY || SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
         });
         if (r.ok) {
           const arr = await r.json();
@@ -240,12 +244,13 @@ exports.handler = async (event) => {
     });
   }
 
-    // — /api/_sb : تشخيص مفتاح Supabase (بدون كشف السر)
+  // 8) /api/_sb : تشخيص مفاتيح Supabase (بدون كشف أسرار)
   if (path.endsWith("/api/_sb")) {
-    const k = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const pub = process.env.SUPABASE_ANON_KEY || "";
     let header_alg = null, role = null, iss = null, exp = null;
     try {
-      const [h, p] = (k || "").split(".");
+      const [h, p] = (svc || "").split(".");
       const b64 = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
       const hd = h ? JSON.parse(b64(h)) : null;
       const pl = p ? JSON.parse(b64(p)) : null;
@@ -256,8 +261,10 @@ exports.handler = async (event) => {
     } catch (_) {}
     return json(200, {
       ok: true,
-      has_key: Boolean(k),
-      service_key_len: k.length,
+      has_service_key: Boolean(svc),
+      service_key_len: svc.length,
+      has_anon_key: Boolean(pub),
+      anon_key_len: pub.length,
       header_alg,
       role,
       iss,
