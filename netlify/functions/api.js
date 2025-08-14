@@ -1,26 +1,10 @@
 // Serverless API (Netlify Functions)
-// ميزات:
-// - حماية X-API-KEY اختيارية عبر API_TOKEN
-// - تكامل Supabase (apikey=anon, Authorization=service_role)
-// - نقاط تشخيص متعددة
-// - حاسبة عمولة
-//
-// Endpoints:
-//   GET /api/health
-//   GET /api/diagnostics
-//   GET /api/_probe
-//   GET /api/_env
-//   GET /api/_auth-check
-//   GET /api/_sb
-//   GET /api/_sb-test
-//   GET /api/_sb-matrix
-//   GET /api/commission-rules?limit=50
-//   GET /api/calc-commission?target=250000&sales=350000&category=اسمنتي
-//      أو: ...&tier1_rate=0.0031&tier2_rate=0.0063&tier3_rate=0.0079
+// - حماية X-API-KEY عبر API_TOKEN
+// - تكامل Supabase: apikey = ANON_KEY ، Authorization = Bearer ANON_KEY
+// - نقاط تشخيص متعددة + حاسبة عمولة
 
 const dns = require("dns").promises;
 
-// رد JSON موحّد
 const json = (status, body = {}) => ({
   statusCode: status,
   headers: {
@@ -32,10 +16,9 @@ const json = (status, body = {}) => ({
   body: JSON.stringify(body),
 });
 
-// حماية اختيارية: لو API_TOKEN مضبوط، نطلب X-API-KEY مطابق
 function requireApiKey(event) {
   const REQUIRED = (process.env.API_TOKEN || "").trim();
-  if (!REQUIRED) return null; // غير مفعّل
+  if (!REQUIRED) return null;
   const h = event.headers || {};
   const got = String(
     h["x-api-key"] || h["X-API-KEY"] || h["x-api-Key"] || h["X-Api-Key"] || ""
@@ -47,31 +30,32 @@ function requireApiKey(event) {
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json(204);
 
-  // توحيد المسار سواء نُودي عبر /.netlify/functions/api أو /api
   const path = (event.path || "").replace("/.netlify/functions/api", "/api");
 
-  // متغيرات البيئة
   const SUPABASE_URL = process.env.SUPABASE_URL || "";
-  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  const ANON_KEY     = process.env.SUPABASE_ANON_KEY || ""; // apikey = anon (مُفضّل)
+  const SERVICE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const ANON_KEY     = (process.env.SUPABASE_ANON_KEY || "").trim();
+
+  // مُساعد: هيدرز Supabase الموحّدة (anon/anon مع fallback للـ service)
+  const sbHeaders = () => ({
+    apikey: ANON_KEY || SERVICE_KEY,
+    Authorization: `Bearer ${ANON_KEY || SERVICE_KEY}`,
+  });
 
   // 1) /api/health
   if (path.endsWith("/api/health")) {
     return json(200, { ok: true, msg: "API is running" });
   }
 
-  // 2) /api/diagnostics — فحص سريع لاتصال Supabase (جذر REST)
+  // 2) /api/diagnostics
   if (path.endsWith("/api/diagnostics")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     let supabase = { ok: false };
-    if (env.url && env.key) {
+    if (env.url && (env.key || env.anon)) {
       try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
           method: "GET",
-          headers: {
-            apikey: ANON_KEY || SERVICE_KEY,         // apikey = anon (أو service كـ fallback)
-            Authorization: `Bearer ${SERVICE_KEY}`,  // Authorization = service_role
-          },
+          headers: sbHeaders(),
         });
         supabase.ok = r.ok;
         supabase.status = r.status;
@@ -80,12 +64,12 @@ exports.handler = async (event) => {
         supabase.error = e?.message || String(e);
       }
     } else {
-      supabase = { ok: false, error: "Missing SUPABASE_URL or SERVICE_KEY" };
+      supabase = { ok: false, error: "Missing SUPABASE_URL or keys" };
     }
     return json(200, { ok: true, env, supabase });
   }
 
-  // 3) /api/_probe — DNS/TLS/REST
+  // 3) /api/_probe
   if (path.endsWith("/api/_probe")) {
     const env = { url: Boolean(SUPABASE_URL), key: Boolean(SERVICE_KEY), anon: Boolean(ANON_KEY) };
     const result = { ok: true, env };
@@ -106,17 +90,14 @@ exports.handler = async (event) => {
     }
 
     try {
-      const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, {
-        method: "GET",
-        headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-      });
+      const r1 = await fetch(`${SUPABASE_URL}/rest/v1`, { method: "GET", headers: sbHeaders() });
       result.rest_v1 = { ok: r1.ok, status: r1.status };
       try { result.rest_v1_body_sample = (await r1.text()).slice(0, 200); } catch (_) {}
     } catch (e) {
       result.rest_v1 = { ok: false, error: e?.message || String(e) };
     }
 
-    result.note = "Use NODE_OPTIONS='--dns-result-order=ipv4first' locally if needed.";
+    result.note = "Using anon/anon headers by default.";
     return json(200, result);
   }
 
@@ -125,8 +106,8 @@ exports.handler = async (event) => {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
 
-    if (!SUPABASE_URL || !SERVICE_KEY) {
-      return json(500, { ok: false, error: "Missing Supabase env vars" });
+    if (!SUPABASE_URL) {
+      return json(500, { ok: false, error: "Missing Supabase URL" });
     }
 
     const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
@@ -138,15 +119,14 @@ exports.handler = async (event) => {
     try {
       const r = await fetch(url, {
         headers: {
-          apikey: ANON_KEY || SERVICE_KEY,          // apikey = anon (أو service لو ما في anon)
-          Authorization: `Bearer ${SERVICE_KEY}`,   // Authorization = service_role
+          ...sbHeaders(),          // apikey = anon, Authorization = Bearer anon
           Prefer: "count=none",
         },
       });
       if (!r.ok) {
         const text = await r.text();
         return json(r.status, { ok: false, error: text });
-        }
+      }
       const data = await r.json();
       return json(200, { ok: true, data });
     } catch (e) {
@@ -154,7 +134,7 @@ exports.handler = async (event) => {
     }
   }
 
-  // 5) /api/calc-commission — حاسبة عمولة
+  // 5) /api/calc-commission — حاسبة العمولة
   if (path.endsWith("/api/calc-commission")) {
     const unauthorized = requireApiKey(event);
     if (unauthorized) return unauthorized;
@@ -173,15 +153,13 @@ exports.handler = async (event) => {
     }
 
     // لو المعدلات مفقودة وتم تمرير category نقرأها من Supabase
-    if ((!tier1_rate || !tier2_rate || !tier3_rate) && category && SUPABASE_URL && SERVICE_KEY) {
+    if ((!tier1_rate || !tier2_rate || !tier3_rate) && category && SUPABASE_URL) {
       try {
         const q = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
         q.searchParams.set("select", "tier1_rate,tier2_rate,tier3_rate");
         q.searchParams.set("category", `eq.${category}`);
         q.searchParams.set("limit", "1");
-        const r = await fetch(q, {
-          headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-        });
+        const r = await fetch(q, { headers: sbHeaders() });
         if (r.ok) {
           const arr = await r.json();
           if (arr && arr[0]) {
@@ -197,7 +175,7 @@ exports.handler = async (event) => {
     const t2 = Number(tier2_rate);
     const t3 = Number(tier3_rate);
     if (![t1, t2, t3].every(Number.isFinite)) {
-      return json(400, { ok: false, error: "Rates are missing. Provide tier*_rate or pass a valid category with rules." });
+      return json(400, { ok: false, error: "Rates are missing. Provide tier*_rate or use a valid category." });
     }
 
     const achievement = (sales / target) * 100;
@@ -223,7 +201,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // 6) /api/_env — تشخيص سريع لوجود API_TOKEN (بدون كشف القيمة)
+  // 6) /api/_env
   if (path.endsWith("/api/_env")) {
     return json(200, {
       ok: true,
@@ -232,7 +210,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // 7) /api/_auth-check — يفحص وصول الهيدر ومطابقته دون كشف القيم
+  // 7) /api/_auth-check
   if (path.endsWith("/api/_auth-check")) {
     const REQUIRED = (process.env.API_TOKEN || "").trim();
     const h = event.headers || {};
@@ -250,10 +228,10 @@ exports.handler = async (event) => {
     });
   }
 
-  // 8) /api/_sb — تشخيص مفاتيح Supabase (بدون كشف أسرار)
+  // 8) /api/_sb
   if (path.endsWith("/api/_sb")) {
-    const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-    const pub = process.env.SUPABASE_ANON_KEY || "";
+    const svc = SERVICE_KEY;
+    const pub = ANON_KEY;
     let header_alg = null, role = null, iss = null, exp = null;
     try {
       const [h, p] = (svc || "").split(".");
@@ -271,29 +249,18 @@ exports.handler = async (event) => {
       service_key_len: svc.length,
       has_anon_key: Boolean(pub),
       anon_key_len: pub.length,
-      header_alg,
-      role,
-      iss,
-      exp
+      header_alg, role, iss, exp
     });
   }
 
-  // 9) /api/_sb-test — استعلام فعلي على جدول commission_rules
+  // 9) /api/_sb-test
   if (path.endsWith("/api/_sb-test")) {
-    if (!SUPABASE_URL || !SERVICE_KEY) {
-      return json(500, { ok: false, error: "Missing Supabase env vars" });
-    }
+    if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
     try {
       const url = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
       url.searchParams.set("select", "id");
       url.searchParams.set("limit", "1");
-      const r = await fetch(url, {
-        headers: {
-          apikey: ANON_KEY || SERVICE_KEY,
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          Prefer: "count=none",
-        },
-      });
+      const r = await fetch(url, { headers: { ...sbHeaders(), Prefer: "count=none" } });
       const text = await r.text();
       return json(r.status, { ok: r.ok, status: r.status, bodySample: text.slice(0, 300) });
     } catch (e) {
@@ -301,52 +268,33 @@ exports.handler = async (event) => {
     }
   }
 
-  // 10) /api/_sb-matrix — يجرب تركيبات هيدرز مختلفة
+  // 10) /api/_sb-matrix (تبقى كما هي لو موجودة عندك للاختبار)
   if (path.endsWith("/api/_sb-matrix")) {
-    if (!SUPABASE_URL || !SERVICE_KEY) {
-      return json(500, { ok: false, error: "Missing Supabase env vars" });
-    }
-
-          const combos = [
-      { name: "svc/svc",   apikey: SERVICE_KEY,                         auth: `Bearer ${SERVICE_KEY}` },
-      { name: "anon/svc",  apikey: (process.env.SUPABASE_ANON_KEY||""), auth: `Bearer ${SERVICE_KEY}` },
-      { name: "svc/none",  apikey: SERVICE_KEY,                         auth: "" }, // بدون Authorization
-      { name: "anon/none", apikey: (process.env.SUPABASE_ANON_KEY||""), auth: "" }, // بدون Authorization
+    if (!SUPABASE_URL) return json(500, { ok: false, error: "Missing Supabase URL" });
+    const combos = [
+      { name: "svc/svc",   apikey: SERVICE_KEY, auth: `Bearer ${SERVICE_KEY}` },
+      { name: "anon/svc",  apikey: ANON_KEY,    auth: `Bearer ${SERVICE_KEY}` },
+      { name: "anon/anon", apikey: ANON_KEY,    auth: `Bearer ${ANON_KEY}` },
     ];
-
     const results = [];
     for (const c of combos) {
       const entry = { combo: c.name };
-
       try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1`, {
-          method: "GET",
-          headers: { apikey: c.apikey, Authorization: c.auth },
-        });
+        const r = await fetch(`${SUPABASE_URL}/rest/v1`, { method: "GET", headers: { apikey: c.apikey, Authorization: c.auth } });
         entry.rest_root = { status: r.status, ok: r.ok };
-      } catch (e) {
-        entry.rest_root = { error: String(e) };
-      }
-
+      } catch (e) { entry.rest_root = { error: String(e) }; }
       try {
         const u = new URL(`${SUPABASE_URL}/rest/v1/commission_rules`);
         u.searchParams.set("select", "id");
         u.searchParams.set("limit", "1");
-        const r2 = await fetch(u, {
-          headers: { apikey: c.apikey, Authorization: c.auth, Prefer: "count=none" },
-        });
+        const r2 = await fetch(u, { headers: { apikey: c.apikey, Authorization: c.auth, Prefer: "count=none" } });
         const body = await r2.text();
         entry.table = { status: r2.status, ok: r2.ok, sample: body.slice(0, 160) };
-      } catch (e) {
-        entry.table = { error: String(e) };
-      }
-
+      } catch (e) { entry.table = { error: String(e) }; }
       results.push(entry);
     }
-
     return json(200, { ok: true, results });
   }
 
-  // 404 لأي مسار آخر
   return json(404, { ok: false, error: "Not Found" });
 };
